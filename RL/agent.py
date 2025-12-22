@@ -108,6 +108,8 @@ class Agent(nj.Module):
             metrics.update({"model_loss_raw": metrics["model_loss_raw"].mean()})
         if "td_error" in metrics:
             metrics.update({"td_error": metrics["td_error"].mean()})
+        if "expl_td_error" in metrics:
+            metrics.update({"expl_td_error": metrics["expl_td_error"].mean()})
 
         return {}, state, metrics
 
