@@ -1,0 +1,52 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyd
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# Distributions
+dist/
+build/
+*.egg
+*.whl
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# IDEs and editors
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+
+# Logs and data
+logdir/
+logs/
+data/
+*.log
+*.sqlite
+*.csv
+*.pkl
+
+# Checkpoints and models
+checkpoints/
+models/
+*.pt
+*.pth
+*.h5
+*.ckpt
+*.pb
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
+
+
+# Docs
+docs/_build/

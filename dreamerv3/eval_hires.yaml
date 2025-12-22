@@ -1,0 +1,15 @@
+# Configuration for High-Resolution Evaluation
+# This file overrides the default low-resolution settings for better visualization.
+env:
+  observation:
+    camera:
+      attributes:
+        image_size_x: 1280
+        image_size_y: 720
+  display:
+    enable: True
+    use_local_window: True
+    render_keys: [camera_display, birdeye_wpt] # Use camera_display for high-res visualization
+dreamerv3:
+  run:
+    log_keys_video: [camera_display, birdeye_wpt] # Use camera_display for high-res logging
