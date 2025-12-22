@@ -5,7 +5,7 @@ import embodied
 import ruamel.yaml as yaml
 
 import car_dreamer
-import dreamerv3
+import RL
 from car_dreamer.toolkit.utils import get_logger
 
 log = get_logger(log_dir=".", job_name="train")
@@ -79,7 +79,7 @@ def main(argv=None):
     config.save(str(logdir / config_filename))
     log.info(f"[Train] Config saved to {logdir / config_filename}")
 
-    agent = dreamerv3.Agent(env.obs_space, env.act_space, step, dreamerv3_config)
+    agent = RL.Agent(env.obs_space, env.act_space, step, dreamerv3_config)
     replay = embodied.replay.Uniform(
         dreamerv3_config.batch_length, dreamerv3_config.replay_size, logdir / "replay"
     )

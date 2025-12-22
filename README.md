@@ -12,14 +12,14 @@ export PYTHONPATH="${CARLA_ROOT}/PythonAPI/carla":${PYTHONPATH}
 Cài đặt gói bằng flit. Cờ `--symlink` được dùng để tạo liên kết tượng trưng (symlink) tới gói trong môi trường Python, nên các thay đổi trong gói sẽ có hiệu lực ngay mà không cần cài lại. (`--pth-file` cũng hoạt động như một lựa chọn thay thế cho `--symlink`.)
 
 ```bash
-conda create python=3.10 --name cardreamer
-conda activate cardreamer
+conda create python=3.10 --name self_driving
+conda activate self_driving
 pip install flit
 flit install --symlink
 ```
 
 ```bash
-cd dreamerv3
+cd RL
 conda install -c "nvidia/label/cuda-11.8.0" cuda-toolkit
 pip install -r requirements.txt
 pip install "jax[cuda12_pip]==0.4.34" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html

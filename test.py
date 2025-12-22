@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from dreamerv3 import jaxutils
+from RL import jaxutils
 from car_dreamer.toolkit.utils import get_logger
 
 log = get_logger(log_dir=".", job_name="test")

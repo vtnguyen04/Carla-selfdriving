@@ -7,7 +7,7 @@ from tqdm import tqdm
 import numpy as np
 
 import car_dreamer
-import dreamerv3
+import RL
 from car_dreamer.toolkit.utils import get_logger
 
 log = get_logger(log_dir=".", job_name="collect")
@@ -96,7 +96,7 @@ def collect(agent, env, replay, logger, args):
         while step < args.steps:
             driver(policy, steps=100)
             pbar.update(100)
-    
+
     log.info(f"Collection finished. Total steps: {step.value}. Saving replay buffer...")
     replay.save()
     log.info("Replay buffer saved.")
@@ -120,7 +120,7 @@ def main(argv=None):
         log.info(f"Using task: {name}")
         env, env_config = car_dreamer.create_task(name, other)
         config = config.update(env_config)
-    
+
     # Add a flag for from_checkpoint
     config = config.update({"dreamerv3.from_checkpoint": "none"})
     config = embodied.Flags(config).parse(other)
@@ -155,11 +155,11 @@ def main(argv=None):
     config.save(str(logdir / config_filename))
     log.info(f"[Collect] Config saved to {logdir / config_filename}")
 
-    agent = dreamerv3.Agent(env.obs_space, env.act_space, step, dreamerv3_config)
+    agent = RL.Agent(env.obs_space, env.act_space, step, dreamerv3_config)
     replay = embodied.replay.Uniform(
         dreamerv3_config.batch_length, dreamerv3_config.replay_size, logdir / "replay"
     )
-    
+
     args = embodied.Config(
         **dreamerv3_config.run,
         logdir=dreamerv3_config.logdir,

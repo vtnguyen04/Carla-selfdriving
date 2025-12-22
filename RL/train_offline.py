@@ -7,7 +7,7 @@ import numpy as np
 import pickle # Import pickle
 
 import car_dreamer
-import dreamerv3
+import RL
 from car_dreamer.toolkit.utils import get_logger
 
 log = get_logger(log_dir=".", job_name="train_offline")
@@ -26,7 +26,7 @@ def train_offline(agent, replay, logger, args):
     step = logger.step
     updates = embodied.Counter()
     metrics = embodied.Metrics()
-    
+
     timer = embodied.Timer()
     timer.wrap("agent", agent, ["train", "report", "save"])
     timer.wrap("replay", replay, ["add", "save"]) # Replay add not used here, but for consistency
@@ -76,16 +76,16 @@ def train_offline(agent, replay, logger, args):
                 outs, state[0], mets = agent.train(batch[0], state[0])
                 metrics.add(mets, prefix="train")
                 updates.increment()
-            
+
             # The original embodied.run.train increments step for each environment interaction.
             # Here, we increment step for each batch of training.
-            step.increment(args.batch_steps * num_updates) 
+            step.increment(args.batch_steps * num_updates)
             pbar.update(args.batch_steps * num_updates)
 
 
             if should_sync(updates):
                 agent.sync()
-            
+
             if should_log(step):
                 agg = metrics.result()
                 report = {}
@@ -114,7 +114,7 @@ def main(argv=None):
 
     config = embodied.Config({"dreamerv3": model_configs["defaults"]})
     config = config.update({"dreamerv3": model_configs[model_size]})
-    
+
     # Load spaces from file
     logdir = embodied.Path(config.dreamerv3.logdir)
     spaces_path = logdir / 'spaces.pkl'
@@ -149,11 +149,11 @@ def main(argv=None):
 
     dreamerv3_config = config.dreamerv3
 
-    agent = dreamerv3.Agent(obs_space, act_space, step, dreamerv3_config)
+    agent = RL.Agent(obs_space, act_space, step, dreamerv3_config)
     replay = embodied.replay.Uniform(
         dreamerv3_config.batch_length, dreamerv3_config.replay_size, logdir / "replay"
     )
-    
+
     args = embodied.Config(
         **dreamerv3_config.run,
         logdir=dreamerv3_config.logdir,

@@ -6,7 +6,7 @@ import numpy as np
 import ruamel.yaml as yaml
 from tqdm import tqdm
 import car_dreamer
-import dreamerv3
+import RL
 from car_dreamer.toolkit.utils import get_logger
 
 warnings.filterwarnings("ignore", ".*truncated to dtype int32.*")
@@ -196,7 +196,7 @@ def main(argv=None):
     )
 
     # 9. Create agent and run evaluation
-    agent = dreamerv3.Agent(env.obs_space, env.act_space, step, dreamerv3_config)
+    agent = RL.Agent(env.obs_space, env.act_space, step, dreamerv3_config)
     args = embodied.Config(
         **dreamerv3_config.run,
         logdir=dreamerv3_config.logdir,

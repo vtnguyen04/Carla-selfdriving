@@ -1,6 +1,6 @@
 import numpy as np
 
-from dreamerv3.embodied.replay.base_prioritized_reverb import BasePrioritizedReverb
+from RL.embodied.replay.base_prioritized_reverb import BasePrioritizedReverb
 
 
 class PrioritizedExperienceReplay(BasePrioritizedReverb):

@@ -8,7 +8,7 @@ import time
 from tqdm import tqdm
 
 import car_dreamer
-import dreamerv3
+import RL
 from car_dreamer.toolkit.utils import get_logger
 from car_dreamer.toolkit.deploy_env import VideoEnv
 from car_dreamer.toolkit.monitor.monitor import EnvMonitorLocalCV
@@ -41,7 +41,7 @@ def deploy_agent(agent, env, monitor, args):
 
     obs = env.reset()
     agent_state = agent.policy_initial(1) # Initial agent state for a single environment
-    
+
     # Initialize monitor for visualization
     monitor_config = embodied.Config({'display': {'enable': True, 'render_keys': ['camera', 'birdeye_wpt']}})
     env_monitor = EnvMonitorLocalCV(monitor_config)
@@ -100,7 +100,7 @@ def main(argv=None):
         deploy_birdeye_video_path="",
         deploy_target_fps=30,
     ).parse_known(argv)
-    
+
     config = embodied.Flags(config).parse(other)
 
     logdir = embodied.Path(config.dreamerv3.logdir)
@@ -131,8 +131,8 @@ def main(argv=None):
     dreamerv3_config = config.dreamerv3
     # Ensure action space from VideoEnv is compatible. If VideoEnv has a default, it will be used.
     # Otherwise, agent's action space will adapt to actual env.
-    agent = dreamerv3.Agent(env.obs_space, env.act_space, embodied.Counter(), dreamerv3_config)
-    
+    agent = RL.Agent(env.obs_space, env.act_space, embodied.Counter(), dreamerv3_config)
+
     # --- Args for deployment ---
     args = embodied.Config(
         **dreamerv3_config.run,

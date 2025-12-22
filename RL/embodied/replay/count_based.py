@@ -1,6 +1,6 @@
 import numpy as np
 
-from dreamerv3.embodied.replay import CuriousReplay
+from RL.embodied.replay import CuriousReplay
 
 
 class CountBasedReplay(CuriousReplay):
