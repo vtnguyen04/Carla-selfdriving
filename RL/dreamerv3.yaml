@@ -25,7 +25,7 @@ defaults:
   run:
     script: train
     steps: 1e8
-    expl_until: 100000
+    expl_until: 10000
     log_every: 1000
     save_every: 2000
     eval_every: 1e4
@@ -56,7 +56,7 @@ defaults:
   task_behavior: Greedy
   expl_behavior: Explore
   batch_size: 8
-  batch_length: 64
+  batch_length: 32
   data_loaders: 16
 
   # World Model
