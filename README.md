@@ -2,7 +2,10 @@
 ```bash
 git clone https://github.com/vtnguyen04/Carla-selfdriving.git
 cd Carla-selfdriving
-```
+
+wget https://tiny.carla.org/carla-0-9-15-linux
+tar -xzf CARLA_0.9.15.tar.gz carla_simulate
+
 
 ```bash
 export CARLA_ROOT="</path/to/carla>"
