@@ -1,4 +1,3 @@
-# dreamerv3/jaxutils.py
 import re
 
 import jax
@@ -8,10 +7,10 @@ import optax
 from tensorflow_probability.substrates import jax as tfp
 
 from . import ninjax as nj
-
 from car_dreamer.toolkit.utils import get_logger
 
 log = get_logger(log_dir=".", job_name="jaxutils")
+
 
 tfd = tfp.distributions
 tree_map = jax.tree_util.tree_map
@@ -75,47 +74,6 @@ def symlog(x):
 
 def symexp(x):
     return jnp.sign(x) * (jnp.exp(jnp.abs(x)) - 1)
-
-
-# ============================================================================
-# JEPA-SPECIFIC UTILITIES
-# ============================================================================
-
-
-def simnorm(x, groups=8, eps=1e-8):
-    """
-    SimNorm (Simplex Normalization) from TD-MPC2
-
-    Chia vector thành groups, softmax từng group riêng biệt
-
-    Args:
-        x: [..., D] - raw logits
-        groups: số groups (D phải chia hết cho groups)
-        eps: epsilon cho numerical stability
-
-    Returns:
-        z: [..., D] - normalized, bounded trong (0, 1)
-
-    Properties:
-        - Continuous và differentiable
-        - Bounded trong (0, 1)
-        - Soft-sparse (gần one-hot nhưng mềm)
-        - Gradient chảy qua tất cả elements
-    """
-    shape = x.shape
-    D = shape[-1]
-    group_size = D // groups
-
-    assert D % groups == 0, f"D={D} phải chia hết cho groups={groups}"
-
-    # Reshape: [..., D] → [..., groups, group_size]
-    x = x.reshape(*shape[:-1], groups, group_size)
-
-    # Softmax trên mỗi group (axis=-1)
-    x = jax.nn.softmax(x, axis=-1)
-
-    # Flatten lại: [..., groups, group_size] → [..., D]
-    return x.reshape(shape)
 
 
 class VICRegLoss:
@@ -201,89 +159,6 @@ class JEPALoss:
         return total_loss, metrics
 
 
-# class CollapseMetrics:
-#     """
-#     Metrics để monitor representation collapse
-#     """
-
-#     @staticmethod
-#     def compute(z, prefix=""):
-#         """
-#         Tính các metrics để detect collapse
-
-#         Args:
-#             z: representations [batch, dim] hoặc [batch, time, dim]
-#             prefix: prefix cho metric names
-
-#         Returns:
-#             dict of metrics
-#         """
-#         # Flatten về [N, dim]
-#         z_flat = z.reshape(-1, z.shape[-1])
-
-#         metrics = {}
-
-#         # 1. Std của mỗi dimension
-#         dim_std = z_flat.std(axis=0)
-#         metrics[f"{prefix}std_mean"] = dim_std.mean()
-#         metrics[f"{prefix}std_min"] = dim_std.min()
-#         metrics[f"{prefix}std_max"] = dim_std.max()
-
-#         # 2. Số dimensions "chết" (std < 0.01)
-#         dead_dims = (dim_std < 0.01).sum()
-#         metrics[f"{prefix}dead_dims"] = dead_dims
-#         metrics[f"{prefix}dead_ratio"] = dead_dims / z_flat.shape[-1]
-
-#         # 3. Effective rank
-#         metrics[f"{prefix}effective_rank"] = CollapseMetrics._effective_rank(z_flat)
-
-#         # 4. Mean correlation giữa các dimensions
-#         metrics[f"{prefix}mean_corr"] = CollapseMetrics._mean_correlation(z_flat)
-
-#         return metrics
-
-#     @staticmethod
-#     def _effective_rank(z):
-#         """
-#         Effective rank = exp(entropy of normalized singular values)
-
-#         High effective rank = đa dạng representation
-#         Low effective rank = collapse
-#         """
-#         # Center
-#         z = z - z.mean(axis=0)
-
-#         # SVD
-#         try:
-#             _, s, _ = jnp.linalg.svd(z, full_matrices=False)
-
-#             # Normalize
-#             s_norm = s / (s.sum() + 1e-8)
-
-#             # Entropy
-#             entropy = -(s_norm * jnp.log(s_norm + 1e-8)).sum()
-
-#             return jnp.exp(entropy)
-#         except:
-#             return jnp.array(0.0)
-
-#     @staticmethod
-#     def _mean_correlation(z):
-#         """Mean absolute correlation giữa các dimensions"""
-#         z = z - z.mean(axis=0)
-#         std = z.std(axis=0) + 1e-8
-#         z_norm = z / std
-
-#         n = z.shape[0]
-#         corr = (z_norm.T @ z_norm) / (n - 1)
-
-#         # Off-diagonal mean
-#         mask = 1 - jnp.eye(corr.shape[0])
-#         off_diag = jnp.abs(corr) * mask
-
-#         return off_diag.sum() / (mask.sum() + 1e-8)
-
-
 # Đơn giản nhất - không cần SVD
 class CollapseMetrics:
     @staticmethod
@@ -339,35 +214,6 @@ class EMAUpdater(nj.Module):
         self.updates.write(updates + 1)
 
         return new_target
-
-
-class SlowUpdater:
-    def __init__(self, src, dst, fraction=1.0, period=1):
-        self.src = src
-        self.dst = dst
-        self.fraction = fraction
-        self.period = period
-        self.updates = nj.Variable(jnp.zeros, (), jnp.int32, name="updates")
-
-    def __call__(self):
-        assert self.src.getm()
-        updates = self.updates.read()
-        need_init = (updates == 0).astype(jnp.float32)
-        need_update = (updates % self.period == 0).astype(jnp.float32)
-        mix = jnp.clip(1.0 * need_init + self.fraction * need_update, 0, 1)
-        source = {
-            k.replace(f"/{self.src.name}/", f"/{self.dst.name}/"): v
-            for k, v in self.src.getm().items()
-        }
-        self.dst.putm(
-            tree_map(lambda s, d: mix * s + (1 - mix) * d, source, self.dst.getm())
-        )
-        self.updates.write(updates + 1)
-
-
-# ============================================================================
-# HELPER FUNCTION - Wrapper cho CollapseMetrics (để tương thích với cả 2 cách gọi)
-# ============================================================================
 
 
 def compute_collapse_metrics(z, prefix=""):
@@ -743,16 +589,15 @@ class Optimizer(nj.Module):
         wd_pattern=r"/(w|kernel)$",
         lateclip=0.0,
         decay_type=None,  # Added
-        decay_steps=0,    # Added
-        min_lr=0.0,       # Added
+        decay_steps=0,  # Added
+        min_lr=0.0,  # Added
     ):
         assert opt in ("adam", "belief", "yogi")
         assert wd_pattern[0] not in ("0", "1")
         # assert self.path not in self.PARAM_COUNTS
         self.PARAM_COUNTS[self.path] = None
         wd_pattern = re.compile(wd_pattern)
-
-        schedules = []
+        chedules = []
         # Base schedule: constant LR or linear warmup
         if warmup > 0:
             schedules.append(optax.linear_schedule(0.0, -lr, warmup))
@@ -773,7 +618,7 @@ class Optimizer(nj.Module):
                     schedules = [
                         optax.join_schedules(
                             schedules=[schedules[0], cosine_schedule],
-                            boundaries=[warmup]
+                            boundaries=[warmup],
                         )
                     ]
                 else:
@@ -781,7 +626,6 @@ class Optimizer(nj.Module):
             # Add other decay types here if needed (e.g., exponential)
             elif decay_type is not None:
                 raise NotImplementedError(f"Decay type '{decay_type}' not implemented.")
-
         chain = []
         if clip:
             chain.append(optax.clip_by_global_norm(clip))
@@ -802,10 +646,7 @@ class Optimizer(nj.Module):
                     ),
                 )
             )
-
-        # Apply the final learning rate schedule
         chain.append(optax.inject_hyperparams(optax.scale)(schedules[0]))
-
         self.opt = optax.chain(*chain)
         self.step = nj.Variable(jnp.array, 0, jnp.int32, name="step")
         self.scaling = COMPUTE_DTYPE == jnp.float16
@@ -897,3 +738,27 @@ def tree_keys(params, prefix=""):
         return prefix
     else:
         raise TypeError(type(params))
+
+
+class SlowUpdater:
+    def __init__(self, src, dst, fraction=1.0, period=1):
+        self.src = src
+        self.dst = dst
+        self.fraction = fraction
+        self.period = period
+        self.updates = nj.Variable(jnp.zeros, (), jnp.int32, name="updates")
+
+    def __call__(self):
+        assert self.src.getm()
+        updates = self.updates.read()
+        need_init = (updates == 0).astype(jnp.float32)
+        need_update = (updates % self.period == 0).astype(jnp.float32)
+        mix = jnp.clip(1.0 * need_init + self.fraction * need_update, 0, 1)
+        source = {
+            k.replace(f"/{self.src.name}/", f"/{self.dst.name}/"): v
+            for k, v in self.src.getm().items()
+        }
+        self.dst.putm(
+            tree_map(lambda s, d: mix * s + (1 - mix) * d, source, self.dst.getm())
+        )
+        self.updates.write(updates + 1)

@@ -11,10 +11,9 @@ class CarlaNavigationEnv(CarlaWptEnv):
     Available config parameters:
 
     * ``num_vehicles``: Number of vehicles to spawn in the environment
+    * ``success_dist``: The required travel distance in meters to successfully complete the task.
 
     """
-
-    SUCCESS_DISTANCE_THRESHOLD = 200.0
 
     def on_reset(self) -> None:
         self.ego = self._world.spawn_actor()
@@ -29,4 +28,4 @@ class CarlaNavigationEnv(CarlaWptEnv):
         self.sum_travel_distance += self.planner_stats["travel_distance"]
 
     def is_destination_reached(self):
-        return self.sum_travel_distance >= self.SUCCESS_DISTANCE_THRESHOLD
+        return self.sum_travel_distance >= self._config.success_dist

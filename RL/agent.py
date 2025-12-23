@@ -1,41 +1,33 @@
 import jax
 import jax.numpy as jnp
-import numpy as np
 
 tree_map = jax.tree_util.tree_map
 sg = lambda x: tree_map(jax.lax.stop_gradient, x)
 
-from car_dreamer.toolkit.utils import get_logger
+import logging
 
-logger = get_logger(log_dir=".", job_name="dreamerv3")
+logger = logging.getLogger()
+
+
+class CheckTypesFilter(logging.Filter):
+    def filter(self, record):
+        return "check_types" not in record.getMessage()
+
+
+logger.addFilter(CheckTypesFilter())
 
 from . import behaviors, jaxagent, jaxutils, nets
 from . import ninjax as nj
 
 
-# Main Agent Class (Controller)
 @jaxagent.Wrapper
 class Agent(nj.Module):
     def __init__(self, obs_space, act_space, step, config):
-
-        # Dynamically adjust grad_heads based on world model type
-        if config.world_model == "jepa":
-            # In JEPA mode, decoder is not used for loss, so remove it from grad_heads
-            new_grad_heads = [h for h in config.grad_heads if h != "decoder"]
-            config = config.update({"grad_heads": new_grad_heads})
-
         self.config = config
         self.obs_space = obs_space
         self.act_space = act_space["action"]
         self.step = step
-
-        # CONDITIONAL WORLD MODEL INSTANTIATION
-        if config.world_model == "jepa":
-            logger.info("Using JEPA World Model")
-            self.wm = JEPAWorldModel(obs_space, act_space, config, name="jepa_wm")
-        else:  # 'reconstruction'
-            logger.info("Using Reconstruction World Model")
-            self.wm = WorldModel(obs_space, act_space, config, name="wm")
+        self.wm = WorldModel(obs_space, act_space, config, name="wm")
         self.task_behavior = getattr(behaviors, config.task_behavior)(
             self.wm, self.act_space, self.config, name="task_behavior"
         )
@@ -57,7 +49,7 @@ class Agent(nj.Module):
         return self.wm.initial(batch_size)
 
     def policy(self, obs, state, mode="train"):
-        self.config.jax.jit and logger.info("Tracing policy function.")
+        self.config.jax.jit and print("Tracing policy function.")
         obs = self.preprocess(obs)
         (prev_latent, prev_action), task_state, expl_state = state
         embed = self.wm.encoder(obs)
@@ -83,18 +75,11 @@ class Agent(nj.Module):
         return outs, state
 
     def train(self, data, state):
-        self.config.jax.jit and logger.info("Tracing train function.")
+        self.config.jax.jit and print("Tracing train function.")
         metrics = {}
         data = self.preprocess(data)
-
-        # Call the appropriate train function
         state, wm_outs, mets = self.wm.train(data, state)
         metrics.update(mets)
-
-        # Call EMA update for JEPA target networks
-        if self.config.world_model == "jepa":
-            self.wm.update_target()
-
         context = {**data, **wm_outs["post"]}
         start = tree_map(lambda x: x.reshape([-1] + list(x.shape[2:])), context)
         _, mets = self.task_behavior.train(self.wm.imagine, start, context)
@@ -103,18 +88,25 @@ class Agent(nj.Module):
             _, mets = self.expl_behavior.train(self.wm.imagine, start, context)
             metrics.update({"expl_" + key: value for key, value in mets.items()})
 
-        # Handle metrics that might not exist in JEPA mode
-        if "model_loss_raw" in metrics:
-            metrics.update({"model_loss_raw": metrics["model_loss_raw"].mean()})
-        if "td_error" in metrics:
-            metrics.update({"td_error": metrics["td_error"].mean()})
-        if "expl_td_error" in metrics:
-            metrics.update({"expl_td_error": metrics["expl_td_error"].mean()})
+        if "keyA" in data.keys():
+            outs = {
+                "key": data["key"],
+                "env_step": data["env_step"],
+                "model_loss": metrics["model_loss_raw"].copy(),
+                "td_error": metrics["td_error"].copy(),
+            }
 
-        return {}, state, metrics
+        else:
+            outs = {}
+
+        # Don't need the full model_loss_raw or td_error after the priority calculation, summarize it.
+        metrics.update({"model_loss_raw": metrics["model_loss_raw"].mean()})
+        metrics.update({"td_error": metrics["td_error"].mean()})
+
+        return outs, state, metrics
 
     def report(self, data):
-        self.config.jax.jit and logger.info("Tracing report function.")
+        self.config.jax.jit and print("Tracing report function.")
         data = self.preprocess(data)
         report = {}
         report.update(self.wm.report(data))
@@ -139,14 +131,6 @@ class Agent(nj.Module):
         return obs
 
 
-# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-# ++ WORLD MODEL DEFINITIONS
-# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-
-# -----------------------------------------------------------------------------
-# 1. Original Reconstruction-based World Model
-# -----------------------------------------------------------------------------
 class WorldModel(nj.Module):
     def __init__(self, obs_space, act_space, config):
         self.obs_space = obs_space
@@ -164,7 +148,8 @@ class WorldModel(nj.Module):
         self.opt = jaxutils.Optimizer(name="model_opt", **config.model_opt)
         scales = self.config.loss_scales.copy()
         image, vector = scales.pop("image"), scales.pop("vector")
-        scales.update({k: image for k in self.heads["decoder"].cnn_shapes})
+        all_cnn_keys = [k for res_shapes in self.heads["decoder"].cnn_shapes.values() for k in res_shapes.keys()]
+        scales.update({k: image for k in all_cnn_keys})
         scales.update({k: vector for k in self.heads["decoder"].mlp_shapes})
         self.scales = scales
 
@@ -211,7 +196,9 @@ class WorldModel(nj.Module):
         last_action = data["action"][:, -1]
         state = last_latent, last_action
         metrics = self._metrics(data, dists, post, prior, losses, model_loss)
-        metrics["model_loss_raw"] = model_loss
+        metrics["model_loss_raw"] = (
+            model_loss  # Store model loss for Curious Replay prioritization
+        )
         return model_loss.mean(), (state, out, metrics)
 
     def imagine(self, policy, start, horizon):
@@ -233,6 +220,33 @@ class WorldModel(nj.Module):
         traj["weight"] = jnp.cumprod(discount * traj["cont"], 0) / discount
         return traj
 
+    def imagine_carry(self, policy, start, horizon, carry):
+        first_cont = (1.0 - start["is_terminal"]).astype(jnp.float32)
+        keys = list(self.rssm.initial(1).keys())
+        start = {k: v for k, v in start.items() if k in keys}
+        outs, carry = policy(start, carry)
+        start["action"] = outs
+        start["carry"] = carry
+
+        def step(prev, _):
+            prev = prev.copy()
+            carry = prev.pop("carry")
+            state = self.rssm.img_step(prev, prev.pop("action"))
+            outs, carry = policy(state, carry)
+            return {**state, "action": outs, "carry": carry}
+
+        traj = jaxutils.scan(step, jnp.arange(horizon), start, self.config.imag_unroll)
+        traj = {
+            k: jnp.concatenate([start[k][None], v], 0)
+            for k, v in traj.items()
+            if k != "carry"
+        }
+        cont = self.heads["cont"](traj).mode()
+        traj["cont"] = jnp.concatenate([first_cont[None], cont[1:]], 0)
+        discount = 1 - 1 / self.config.horizon
+        traj["weight"] = jnp.cumprod(discount * traj["cont"], 0) / discount
+        return traj
+
     def report(self, data):
         state = self.initial(len(data["is_first"]))
         report = {}
@@ -243,7 +257,8 @@ class WorldModel(nj.Module):
         start = {k: v[:, -1] for k, v in context.items()}
         recon = self.heads["decoder"](context)
         openl = self.heads["decoder"](self.rssm.imagine(data["action"][:6, 5:], start))
-        for key in self.heads["decoder"].cnn_shapes.keys():
+        all_cnn_keys = [k for res_shapes in self.heads["decoder"].cnn_shapes.values() for k in res_shapes.keys()]
+        for key in all_cnn_keys:
             truth = data[key][:6].astype(jnp.float32)
             model = jnp.concatenate([recon[key].mode()[:, :5], openl[key].mode()], 1)
             error = (model - truth + 1) / 2
@@ -256,9 +271,9 @@ class WorldModel(nj.Module):
         metrics = {}
         metrics.update(jaxutils.tensorstats(entropy(prior), "prior_ent"))
         metrics.update(jaxutils.tensorstats(entropy(post), "post_ent"))
-        metrics.update({f"{k}_loss": v.mean() for k, v in losses.items()})
+        metrics.update({f"{k}_loss_mean": v.mean() for k, v in losses.items()})
         metrics.update({f"{k}_loss_std": v.std() for k, v in losses.items()})
-        metrics["model_loss"] = model_loss.mean()
+        metrics["model_loss_mean"] = model_loss.mean()
         metrics["model_loss_std"] = model_loss.std()
         metrics["reward_max_data"] = jnp.abs(data["reward"]).max()
         metrics["reward_max_pred"] = jnp.abs(dists["reward"].mean()).max()
@@ -269,203 +284,6 @@ class WorldModel(nj.Module):
             stats = jaxutils.balance_stats(dists["cont"], data["cont"], 0.5)
             metrics.update({f"cont_{k}": v for k, v in stats.items()})
         return metrics
-
-
-class JEPAWorldModel(nj.Module):
-    def __init__(self, obs_space, act_space, config):
-        self.config = config
-        self.obs_space = obs_space
-        self.act_space = act_space["action"]
-        self.jepa_cfg = config.jepa_wm
-
-        shapes = {
-            k: tuple(v.shape) for k, v in obs_space.items() if not k.startswith("log_")
-        }
-
-        self.encoder = nets.MultiEncoder(shapes, **config.encoder, name="enc")
-        self.target_encoder = nets.MultiEncoder(
-            shapes, **config.encoder, name="target_enc"
-        )
-        self.rssm = nets.RSSM(**config.rssm, name="rssm")
-
-        # Gom các heads vào dictionary để tương thích với behaviors.py
-        self.heads = {
-            "reward": nets.MLP((), **config.reward_head, name="rew"),
-            "cont": nets.MLP((), **config.cont_head, name="cont"),
-        }
-
-        # Projectors và Predictor
-        self.online_projector = nets.JEPAProjector(
-            output_dim=self.jepa_cfg.proj_dim,
-            hidden_dim=self.jepa_cfg.pred_hidden,
-            act=self.jepa_cfg.act,
-            norm=self.jepa_cfg.norm,
-            name="online_proj",
-        )
-        self.target_projector = nets.JEPAProjector(
-            output_dim=self.jepa_cfg.proj_dim,
-            hidden_dim=self.jepa_cfg.pred_hidden,
-            act=self.jepa_cfg.act,
-            norm=self.jepa_cfg.norm,
-            name="target_proj",
-        )
-        self.predictor = nets.JEPAPredictor(
-            output_dim=self.jepa_cfg.proj_dim,
-            hidden_dim=self.jepa_cfg.pred_hidden,
-            layers=self.jepa_cfg.pred_layers,
-            act=self.jepa_cfg.act,
-            norm=self.jepa_cfg.norm,
-            name="predictor",
-        )
-
-        self.opt = jaxutils.Optimizer(name="model_opt", **config.model_opt)
-
-        if self.jepa_cfg.jepa_loss_type == "vicreg":
-            self._jepa_loss_fn = jaxutils.VICRegLoss()
-        else:
-            self._jepa_loss_fn = jaxutils.JEPALoss()
-
-    def initial(self, batch_size):
-        prev_latent = self.rssm.initial(batch_size)
-        prev_action = jnp.zeros((batch_size, *self.act_space.shape))
-        return prev_latent, prev_action
-
-    def train(self, data, state):
-        # Thêm các head từ dictionary vào danh sách tối ưu hóa
-        modules = [
-            self.encoder,
-            self.rssm,
-            self.predictor,
-            self.online_projector,
-            *self.heads.values(),
-        ]
-        mets, (state, outs, metrics) = self.opt(
-            modules, self.loss, data, state, has_aux=True
-        )
-        metrics.update(mets)
-        return state, outs, metrics
-
-    def loss(self, data, state):
-        online_embed = self.encoder(data)
-        target_embed = sg(self.target_encoder(data))
-
-        prev_latent, prev_action = state
-        prev_actions = jnp.concatenate(
-            [prev_action[:, None], data["action"][:, :-1]], 1
-        )
-        post, prior = self.rssm.observe(
-            online_embed, prev_actions, data["is_first"], prev_latent
-        )
-
-        # JEPA Loss Logic
-        embed_t = online_embed[:, :-1]
-        action_t = data["action"][:, :-1]
-        target_embed_t1 = target_embed[:, 1:]
-        B, T_minus_1 = embed_t.shape[:2]
-
-        z_t = self.online_projector(embed_t.reshape(B * T_minus_1, -1))
-        z_target_t1 = sg(
-            self.target_projector(target_embed_t1.reshape(B * T_minus_1, -1))
-        )
-        pred_z_t1 = self.predictor(z_t, action_t.reshape(B * T_minus_1, -1))
-
-        jepa_loss, jepa_metrics = self._jepa_loss_fn(pred_z_t1, z_target_t1)
-
-        # Dynamics losses
-        dyn_loss = self.rssm.dyn_loss(post, prior, **self.config.dyn_loss).mean()
-        rep_loss = self.rssm.rep_loss(post, prior, **self.config.rep_loss).mean()
-
-        # Reward & Cont losses sử dụng dictionary self.heads
-        feats = {**post, "embed": online_embed}
-        dists = {}
-        for name, head in self.heads.items():
-            out = head(feats if name in self.config.grad_heads else sg(feats))
-            dists[name] = out
-
-        reward_loss = (
-            -dists["reward"].log_prob(data["reward"].astype(jnp.float32)).mean()
-        )
-        cont_loss = -dists["cont"].log_prob(data["cont"].astype(jnp.float32)).mean()
-
-        total_loss = (
-            self.jepa_cfg.jepa_scale * jepa_loss
-            + self.config.loss_scales.dyn * dyn_loss
-            + self.config.loss_scales.rep * rep_loss
-            + self.config.loss_scales.reward * reward_loss
-            + self.config.loss_scales.cont * cont_loss
-        )
-
-        metrics = {
-            **jepa_metrics,
-            "dyn_loss": dyn_loss,
-            "rep_loss": rep_loss,
-            "reward_loss": reward_loss,
-            "cont_loss": cont_loss,
-            "model_loss": total_loss,
-        }
-
-        out = {"embed": online_embed, "post": post, "prior": prior}
-        last_latent = {k: v[:, -1] for k, v in post.items()}
-        last_action = data["action"][:, -1]
-        state = last_latent, last_action
-
-        return total_loss, (state, out, metrics)
-
-    def update_target(self):
-        decay = self.jepa_cfg.ema_decay
-
-        # Safe EMA cho Encoder
-        online_enc = self.encoder.getm()
-        target_enc = self.target_encoder.getm()
-        if online_enc and target_enc:
-            online_renamed = {
-                k.replace("/enc/", "/target_enc/"): v for k, v in online_enc.items()
-            }
-            new_enc = jaxutils.ema_update(online_renamed, target_enc, decay)
-            self.target_encoder.putm(new_enc)
-
-        # Safe EMA cho Projector
-        online_proj = self.online_projector.getm()
-        target_proj = self.target_projector.getm()
-        if online_proj and target_proj:
-            online_proj_renamed = {
-                k.replace("/online_proj/", "/target_proj/"): v
-                for k, v in online_proj.items()
-            }
-            new_proj = jaxutils.ema_update(online_proj_renamed, target_proj, decay)
-            self.target_projector.putm(new_proj)
-
-    def imagine(self, policy, start, horizon):
-        first_cont = (1.0 - start["is_terminal"]).astype(jnp.float32)
-        keys = list(self.rssm.initial(1).keys())
-        start = {k: v for k, v in start.items() if k in keys}
-        start["action"] = policy(start)
-
-        def step(prev, _):
-            prev = prev.copy()
-            state = self.rssm.img_step(prev, prev.pop("action"))
-            return {**state, "action": policy(state)}
-
-        traj = jaxutils.scan(step, jnp.arange(horizon), start, self.config.imag_unroll)
-        traj = {k: jnp.concatenate([start[k][None], v], 0) for k, v in traj.items()}
-        # Sử dụng self.heads['cont'] thay vì self.cont_head
-        cont = self.heads["cont"](traj).mode()
-        traj["cont"] = jnp.concatenate([first_cont[None], cont[1:]], 0)
-        discount = 1 - 1 / self.config.horizon
-        traj["weight"] = jnp.cumprod(discount * traj["cont"], 0) / discount
-        return traj
-
-    def report(self, data):
-        report = {}
-        state = self.initial(len(data["is_first"]))
-        loss, (state, out, metrics) = self.loss(data, state)
-        report.update(metrics)
-        return report
-
-
-# -----------------------------------------------------------------------------
-# 3. Original Actor-Critic and V-Function
-# -----------------------------------------------------------------------------
 
 
 class ImagActorCritic(nj.Module):
@@ -526,30 +344,16 @@ class ImagActorCritic(nj.Module):
             metrics.update(jaxutils.tensorstats(normed_ret, f"{key}_return_normed"))
             metrics[f"{key}_return_rate"] = (jnp.abs(ret) >= 0.5).mean()
 
-        r = (
-            jnp.reshape(rew[0], (self.config.batch_size, self.config.batch_length))
-            if "batch_size" in self.config
-            else rew[0]
-        )
-        v = (
-            jnp.reshape(base[0], (self.config.batch_size, self.config.batch_length))
-            if "batch_size" in self.config
-            else base[0]
-        )
-        disc = (
-            jnp.reshape(
-                traj["cont"][0], (self.config.batch_size, self.config.batch_length)
-            )
-            * (1 - 1 / self.config.horizon)
-            if "batch_size" in self.config
-            else traj["cont"][0]
-        )
-        td_error = (
-            r[:, :-1] + disc[:, 1:] * v[:, 1:] - v[:, :-1]
-            if "batch_size" in self.config
-            else 0
-        )
-        metrics["td_error"] = td_error
+        # if len(self.critics) != 1:
+        #  raise NotImplementedError('Must have exactly one critic for TD error calculation.')
+
+        r = jnp.reshape(rew[0], (self.config.batch_size, self.config.batch_length))
+        v = jnp.reshape(base[0], (self.config.batch_size, self.config.batch_length))
+        disc = jnp.reshape(
+            traj["cont"][0], (self.config.batch_size, self.config.batch_length)
+        ) * (1 - 1 / self.config.horizon)
+        td_error = r[:, :-1] + disc[:, 1:] * v[:, 1:] - v[:, :-1]
+        metrics["td_error"] = td_error  # Store TD error for PER prioritization
 
         adv = jnp.stack(advs).sum(0)
         policy = self.actor(sg(traj))
@@ -557,6 +361,10 @@ class ImagActorCritic(nj.Module):
         loss = {"backprop": -adv, "reinforce": -logpi * sg(adv)}[self.grad]
         ent = policy.entropy()[:-1]
         loss -= self.config.actent * ent
+        actions = sg(traj["action"])
+        action_diffs = actions[1:] - actions[:-1]
+        smoothness_penalty = jnp.square(action_diffs).mean(-1)
+        loss += self.config.imag_smoothness_scale * smoothness_penalty
         loss *= sg(traj["weight"])[:-1]
         loss *= self.config.loss_scales.actor
         metrics.update(self._metrics(traj, policy, logpi, ent, adv))

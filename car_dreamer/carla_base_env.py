@@ -107,6 +107,8 @@ class CarlaBaseEnv(gym.Env):
 
         log.info("[CARLA] Environment reset")
         self.obs, _ = self._observer.get_observation(self.get_state())
+        self.prev_action = None
+        self.current_action = None
         return self.obs
 
     def get_vehicle_control(self, action):
@@ -145,6 +147,8 @@ class CarlaBaseEnv(gym.Env):
         return terminal, terminal_conds
 
     def step(self, action):
+        self.prev_action = self.current_action
+        self.current_action = action
         self.apply_control(action)
         self._world.step()
         self._time_step += 1

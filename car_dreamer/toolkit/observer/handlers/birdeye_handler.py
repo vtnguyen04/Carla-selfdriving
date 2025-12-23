@@ -27,6 +27,7 @@ class BirdeyeHandler(BaseHandler):
             pixels_ahead_vehicle,
             config.sight_fov,
             config.sight_range,
+            config, # Pass the config object here
         )
         self.surface = np.zeros((self._display_size, self._display_size, 3), dtype=np.uint8)
 

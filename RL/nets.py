@@ -7,64 +7,39 @@ from tensorflow_probability.substrates import jax as tfp
 
 from . import jaxutils
 from . import ninjax as nj
-from car_dreamer.toolkit.utils import get_logger
-
-log = get_logger(log_dir=".", job_name="nets")
 
 f32 = jnp.float32
 tfd = tfp.distributions
 tree_map = jax.tree_util.tree_map
 
 
-sg = lambda x: tree_map(jax.lax.stop_gradient, x)
+def sg(x):
+    return tree_map(jax.lax.stop_gradient, x)
 
 
 cast = jaxutils.cast_to_compute
 
 
 class RSSM(nj.Module):
-
     def __init__(
         self,
         deter=1024,
         stoch=32,
-        classes=None,
+        classes=32,
         unroll=False,
         initial="learned",
         unimix=0.01,
         action_clip=1.0,
-        use_simnorm=False,  # Bật SimNorm thay vì Categorical
-        simnorm_groups=8,
         **kw,
     ):
-        self._deter: int = deter
+        self._deter = deter
         self._stoch = stoch
-        self._classes: int = classes
+        self._classes = classes
         self._unroll = unroll
         self._initial = initial
         self._unimix = unimix
         self._action_clip = action_clip
         self._kw = kw
-        self._use_simnorm = use_simnorm
-        self._simnorm_groups = simnorm_groups
-
-    @property
-    def dtype(self):
-        return f32
-
-    @property
-    def deter_dim(self):
-        return self._deter
-
-    @property
-    def stoch_dim(self):
-        if self._classes:
-            return self._stoch * self._classes
-        return self._stoch
-
-    @property
-    def feat_dim(self):
-        return self.deter_dim + self.stoch_dim
 
     def initial(self, bs):
         if self._classes:
@@ -90,31 +65,12 @@ class RSSM(nj.Module):
         else:
             raise NotImplementedError(self._initial)
 
-    def get_feat(self, state):
-        """
-        Lấy feature vector từ RSSM state
-
-        Returns:
-            feat: [batch, ..., deter + stoch_dim]
-        """
-        stoch = state["stoch"]
-        deter = state["deter"]
-
-        if self._classes:
-            # Flatten categorical: [batch, stoch, classes] -> [batch, stoch*classes]
-            stoch = stoch.reshape(stoch.shape[:-2] + (-1,))
-
-        return jnp.concatenate([deter, stoch], axis=-1)
-
     def observe(self, embed, action, is_first, state=None):
-
-        batch_size = action.shape[0]
-
         def swap(x):
             return x.transpose([1, 0] + list(range(2, len(x.shape))))
 
         if state is None:
-            state = self.initial(bs=batch_size)
+            state = self.initial(action.shape[0])
 
         def step(prev, inputs):
             return self.obs_step(prev[0], *inputs)
@@ -144,7 +100,7 @@ class RSSM(nj.Module):
         else:
             mean = state["mean"].astype(f32)
             std = state["std"].astype(f32)
-            return tfd.MultivariateNormalDiag(mean, std)
+            return tfp.MultivariateNormalDiag(mean, std)
 
     def obs_step(self, prev_state, prev_action, embed, is_first):
         is_first = cast(is_first)
@@ -258,89 +214,15 @@ class RSSM(nj.Module):
         return loss
 
 
-class JEPAPredictor(nj.Module):
-    """
-    JEPA Predictor Network
-
-    Dự đoán next latent từ current latent + action
-    """
-
-    def __init__(
-        self,
-        output_dim,
-        hidden_dim=512,
-        layers=3,
-        act="silu",
-        norm="layer",
-    ):
-        self._output_dim = output_dim
-        self._hidden_dim = hidden_dim
-        self._layers = layers
-        self._act = act
-        self._norm = norm
-
-    def __call__(self, feat, action):
-        """
-        Args:
-            feat: current features [batch, feat_dim]
-            action: action taken [batch, action_dim]
-
-        Returns:
-            pred: predicted embedding [batch, output_dim]
-        """
-        x = jnp.concatenate([feat, action], axis=-1)
-
-        for i in range(self._layers):
-            x = self.get(
-                f"h{i}", Linear, self._hidden_dim, act=self._act, norm=self._norm
-            )(x)
-
-        x = self.get("out", Linear, self._output_dim, act="none", norm="none")(x)
-
-        return x
-
-
-class JEPAProjector(nj.Module):
-    """
-    JEPA Projector Network
-
-    Project embeddings vào space cho comparison
-    """
-
-    def __init__(
-        self,
-        output_dim,
-        hidden_dim=512,
-        layers=2,
-        act="silu",
-        norm="layer",
-    ):
-        self._output_dim = output_dim
-        self._hidden_dim = hidden_dim
-        self._layers = layers
-        self._act = act
-        self._norm = norm
-
-    def __call__(self, x):
-        for i in range(self._layers - 1):
-            x = self.get(
-                f"h{i}", Linear, self._hidden_dim, act=self._act, norm=self._norm
-            )(x)
-
-        x = self.get("out", Linear, self._output_dim, act="none", norm="none")(x)
-
-        return x
-
-
 class MultiEncoder(nj.Module):
     def __init__(
         self,
         shapes,
-        mlp_units,
         cnn_keys=r".*",
         mlp_keys=r".*",
         mlp_layers=4,
-        cnn="resize",
+        mlp_units=512,
+        cnn="resnet",
         cnn_depth=48,
         cnn_blocks=2,
         resize="stride",
@@ -354,53 +236,51 @@ class MultiEncoder(nj.Module):
             for k, v in shapes.items()
             if (k not in excluded and not k.startswith("log_"))
         }
-        if isinstance(cnn_keys, str):
-            self.cnn_shapes = {
-                k: v
-                for k, v in shapes.items()
-                if (len(v) == 3 and re.match(cnn_keys, k))
-            }
-        else:
-            self.cnn_shapes = {
-                k: v for k, v in shapes.items() if (len(v) == 3 and k in cnn_keys)
-            }
 
-        if isinstance(mlp_keys, str):
-            self.mlp_shapes = {
+        # Group CNN shapes by resolution
+        self.cnn_shapes = {}
+        for k, v in shapes.items():
+            if len(v) == 3 and re.match(cnn_keys, k):
+                resolution = tuple(v[:2])
+                if resolution not in self.cnn_shapes:
+                    self.cnn_shapes[resolution] = {}
+                self.cnn_shapes[resolution][k] = v
+
+        self.mlp_shapes = {
+            k: v
+            for k, v in shapes.items()
+            if (len(v) in (1, 2) and re.match(mlp_keys, k))
+        }
+        self.shapes = {
+            **{
                 k: v
-                for k, v in shapes.items()
-                if (len(v) in (1, 2) and re.match(mlp_keys, k))
-            }
-        else:
-            self.mlp_shapes = {
-                k: v for k, v in shapes.items() if (len(v) in (1, 2) and k in mlp_keys)
-            }
-        self.shapes = {**self.cnn_shapes, **self.mlp_shapes}
-        log.info(f"Encoder CNN shapes: {self.cnn_shapes}")
-        log.info(f"Encoder MLP shapes: {self.mlp_shapes}")
-        cnn_kw = {**kw, "minres": minres, "name": "cnn"}
+                for res_shapes in self.cnn_shapes.values()
+                for k, v in res_shapes.items()
+            },
+            **self.mlp_shapes,
+        }
+
+        print("Encoder CNN shapes grouped by resolution:", self.cnn_shapes)
+        print("Encoder MLP shapes:", self.mlp_shapes)
+
+        cnn_kw = {**kw, "minres": minres}
         mlp_kw = {**kw, "symlog_inputs": symlog_inputs, "name": "mlp"}
-        if self.cnn_shapes:
+
+        self._cnns = {}
+        for resolution, res_shapes in self.cnn_shapes.items():
             if cnn == "resnet":
-                self._cnn = ImageEncoderResnet(cnn_depth, cnn_blocks, resize, **cnn_kw)
+                self._cnns[resolution] = ImageEncoderResnet(
+                    cnn_depth,
+                    cnn_blocks,
+                    resize,
+                    **cnn_kw,
+                    name=f"cnn_{resolution[0]}x{resolution[1]}",
+                )
             else:
                 raise NotImplementedError(cnn)
+
         if self.mlp_shapes:
             self._mlp = MLP(None, mlp_layers, mlp_units, dist="none", **mlp_kw)
-
-    @property
-    def output_dim(self):
-        dim = 0
-        if hasattr(self, "_cnn"):
-            # Tính toán dựa trên ResNet Encoder: depth * 2**(stages-1) * (minres**2)
-            stages = int(
-                np.log2(64) - np.log2(self._cnn._minres)
-            )  # Mặc định ảnh 64x64, minres 4 -> 4 stages
-            final_depth = self._cnn._depth * (2 ** (stages - 1))
-            dim += final_depth * (self._cnn._minres**2)
-        if hasattr(self, "_mlp"):
-            dim += self._mlp._units
-        return dim
 
     def __call__(self, data):
         some_key, some_shape = list(self.shapes.items())[0]
@@ -409,11 +289,14 @@ class MultiEncoder(nj.Module):
             k: v.reshape((-1,) + v.shape[len(batch_dims) :]) for k, v in data.items()
         }
         outputs = []
-        if self.cnn_shapes:
-            inputs = jnp.concatenate([data[k] for k in self.cnn_shapes], -1)
-            output = self._cnn(inputs)
+
+        for resolution, cnn_instance in self._cnns.items():
+            res_shapes = self.cnn_shapes[resolution]
+            inputs = jnp.concatenate([data[k] for k in res_shapes], -1)
+            output = cnn_instance(inputs)
             output = output.reshape((output.shape[0], -1))
             outputs.append(output)
+
         if self.mlp_shapes:
             inputs = [
                 data[k][..., None] if len(self.shapes[k]) == 0 else data[k]
@@ -422,6 +305,7 @@ class MultiEncoder(nj.Module):
             inputs = jnp.concatenate([x.astype(f32) for x in inputs], -1)
             inputs = jaxutils.cast_to_compute(inputs)
             outputs.append(self._mlp(inputs))
+
         outputs = jnp.concatenate(outputs, -1)
         outputs = outputs.reshape(batch_dims + outputs.shape[1:])
         return outputs
@@ -431,12 +315,12 @@ class MultiDecoder(nj.Module):
     def __init__(
         self,
         shapes,
-        mlp_units,
         inputs=["tensor"],
         cnn_keys=r".*",
         mlp_keys=r".*",
         mlp_layers=4,
-        cnn="resize",
+        mlp_units=512,
+        cnn="resnet",
         cnn_depth=48,
         cnn_blocks=2,
         image_dist="mse",
@@ -450,42 +334,53 @@ class MultiDecoder(nj.Module):
     ):
         excluded = ("is_first", "is_last", "is_terminal", "reward")
         shapes = {k: v for k, v in shapes.items() if k not in excluded}
-        if isinstance(cnn_keys, str):
-            self.cnn_shapes = {
-                k: v
-                for k, v in shapes.items()
-                if (re.match(cnn_keys, k) and len(v) == 3)
-            }
-        else:
-            self.cnn_shapes = {
-                k: v for k, v in shapes.items() if (k in cnn_keys and len(v) == 3)
-            }
 
-        if isinstance(mlp_keys, str):
-            self.mlp_shapes = {
+        # Group CNN shapes by resolution
+        self.cnn_shapes = {}
+        for k, v in shapes.items():
+            if len(v) == 3 and re.match(cnn_keys, k):
+                resolution = tuple(v[:2])
+                if resolution not in self.cnn_shapes:
+                    self.cnn_shapes[resolution] = {}
+                self.cnn_shapes[resolution][k] = v
+
+        self.mlp_shapes = {
+            k: v for k, v in shapes.items() if re.match(mlp_keys, k) and len(v) == 1
+        }
+        self.shapes = {
+            **{
                 k: v
-                for k, v in shapes.items()
-                if (re.match(mlp_keys, k) and len(v) == 1)
-            }
-        else:
-            self.mlp_shapes = {
-                k: v for k, v in shapes.items() if (k in mlp_keys and len(v) == 1)
-            }
-        self.shapes = {**self.cnn_shapes, **self.mlp_shapes}
-        log.info(f"Decoder CNN shapes: {self.cnn_shapes}")
-        log.info(f"Decoder MLP shapes: {self.mlp_shapes}")
+                for res_shapes in self.cnn_shapes.values()
+                for k, v in res_shapes.items()
+            },
+            **self.mlp_shapes,
+        }
+
+        print("Decoder CNN shapes grouped by resolution:", self.cnn_shapes)
+        print("Decoder MLP shapes:", self.mlp_shapes)
+
         cnn_kw = {**kw, "minres": minres, "sigmoid": cnn_sigmoid}
         mlp_kw = {**kw, "dist": vector_dist, "outscale": outscale, "bins": bins}
-        if self.cnn_shapes:
-            shapes = list(self.cnn_shapes.values())
-            assert all(x[:-1] == shapes[0][:-1] for x in shapes)
-            shape = shapes[0][:-1] + (sum(x[-1] for x in shapes),)
+
+        self._cnns = {}
+        for resolution, res_shapes in self.cnn_shapes.items():
+            # All shapes in a resolution group must have the same spatial dimensions
+            shape_list = list(res_shapes.values())
+            spatial_shape = shape_list[0][:-1]
+            total_channels = sum(x[-1] for x in shape_list)
+            output_shape = spatial_shape + (total_channels,)
             if cnn == "resnet":
-                self._cnn = ImageDecoderResnet(
-                    shape, cnn_depth, cnn_blocks, resize, **cnn_kw, name="cnn"
+                self._cnns[resolution] = ImageDecoderResnet(
+                    output_shape,
+                    cnn_depth,
+                    cnn_blocks,
+                    resize,
+                    **cnn_kw,
+                    name=f"cnn_{resolution[0]}x{resolution[1]}",
                 )
             else:
                 raise NotImplementedError(cnn)
+
         if self.mlp_shapes:
             self._mlp = MLP(
                 self.mlp_shapes, mlp_layers, mlp_units, **mlp_kw, name="mlp"
@@ -496,21 +391,29 @@ class MultiDecoder(nj.Module):
     def __call__(self, inputs, drop_loss_indices=None):
         features = self._inputs(inputs)
         dists = {}
+
         if self.cnn_shapes:
             feat = features
             if drop_loss_indices is not None:
                 feat = feat[:, drop_loss_indices]
             flat = feat.reshape([-1, feat.shape[-1]])
-            output = self._cnn(flat)
-            output = output.reshape(feat.shape[:-1] + output.shape[1:])
-            split_indices = np.cumsum([v[-1] for v in self.cnn_shapes.values()][:-1])
-            means = jnp.split(output, split_indices, -1)
-            dists.update(
-                {
-                    key: self._make_image_dist(key, mean)
-                    for (key, shape), mean in zip(self.cnn_shapes.items(), means)
-                }
-            )
+
+            for resolution, cnn_instance in self._cnns.items():
+                res_shapes = self.cnn_shapes[resolution]
+                output = cnn_instance(flat)
+                output = output.reshape(feat.shape[:-1] + output.shape[1:])
+
+                res_shape_list = list(res_shapes.values())
+                split_indices = np.cumsum([v[-1] for v in res_shape_list[:-1]])
+                means = jnp.split(output, split_indices, -1)
+
+                dists.update(
+                    {
+                        key: self._make_image_dist(key, mean)
+                        for (key, shape), mean in zip(res_shapes.items(), means)
+                    }
+                )
+
         if self.mlp_shapes:
             dists.update(self._mlp(features))
         return dists
@@ -535,7 +438,8 @@ class ImageEncoderResnet(nj.Module):
     def __call__(self, x):
         stages = int(np.log2(x.shape[-2]) - np.log2(self._minres))
         depth = self._depth
-        # log.debug(x.shape)
+        x = jaxutils.cast_to_compute(x) - 0.5
+        # print(x.shape)
         for i in range(stages):
             kw = {**self._kw, "preact": False}
             if self._resize == "stride":
@@ -561,12 +465,12 @@ class ImageEncoderResnet(nj.Module):
                 x = self.get(f"s{i}b{j}conv1", Conv2D, depth, 3, **kw)(x)
                 x = self.get(f"s{i}b{j}conv2", Conv2D, depth, 3, **kw)(x)
                 x += skip
-                # log.debug(x.shape)
+                # print(x.shape)
             depth *= 2
         if self._blocks:
             x = get_act(self._kw["act"])(x)
         x = x.reshape((x.shape[0], -1))
-        # log.debug(x.shape)
+        # print(x.shape)
         return x
 
 
@@ -592,7 +496,7 @@ class ImageDecoderResnet(nj.Module):
                 x = self.get(f"s{i}b{j}conv1", Conv2D, depth, 3, **kw)(x)
                 x = self.get(f"s{i}b{j}conv2", Conv2D, depth, 3, **kw)(x)
                 x += skip
-                # log.debug(x.shape)
+                # print(x.shape)
             depth //= 2
             kw = {**self._kw, "preact": False}
             if i == stages - 1:
@@ -614,7 +518,7 @@ class ImageDecoderResnet(nj.Module):
             padw = (x.shape[2] - self._shape[1]) / 2
             x = x[:, int(np.ceil(padh)) : -int(padh), :]
             x = x[:, :, int(np.ceil(padw)) : -int(padw)]
-        # log.debug(x.shape)
+        # print(x.shape)
         assert x.shape[-3:] == self._shape, (x.shape, self._shape)
         if self._sigmoid:
             x = jax.nn.sigmoid(x)

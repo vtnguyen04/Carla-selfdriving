@@ -20,7 +20,7 @@ flit install --symlink
 
 ```bash
 cd RL
-conda install -c "nvidia/label/cuda-11.8.0" cuda-toolkit
+conda install -c "nvidia/label/cuda-12.8.0" cuda-toolkit
 pip install -r requirements.txt
 pip install "jax[cuda12_pip]==0.4.34" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 ```

@@ -5,7 +5,7 @@ defaults:
   logdir: /dev/null
   replay: uniform
   # Use smalelr replay t osave memory; 1e5 can be suffcient for most tasks
-  replay_size: 1e5
+  replay_size: 1e6
   replay_online: False
   eval_dir: ""
   filter: ".*"
@@ -25,8 +25,8 @@ defaults:
   run:
     script: train
     steps: 1e8
-    expl_until: 10000
-    log_every: 1000
+    expl_until: 0
+    log_every: 500
     save_every: 2000
     eval_every: 1e4
     eval_initial: True
@@ -54,33 +54,19 @@ defaults:
 
   # Agent
   task_behavior: Greedy
-  expl_behavior: Explore
-  batch_size: 8
-  batch_length: 32
-  data_loaders: 16
+  expl_behavior: None
+  batch_size: 16
+  batch_length: 64
+  data_loaders: 20
 
   # World Model
-  world_model: "reconstruction"  # Can be 'reconstruction' or 'jepa'
   grad_heads: [decoder, reward, cont]
-
-  jepa_wm:
-    {
-      proj_dim: 256,
-      pred_layers: 3,
-      pred_hidden: 512,
-      ema_decay: 0.99,
-      jepa_scale: 1.0,
-      act: silu,
-      norm: layer,
-      jepa_loss_type: "mse",  # "vicreg" hoặc "mse"
-    }
-
   rssm:
     {
       deter: 4096,
       units: 1024,
       stoch: 32,
-      # classes: 32,
+      classes: 32,
       act: silu,
       norm: layer,
       initial: learned,
@@ -109,7 +95,7 @@ defaults:
     }
   decoder:
     {
-      cnn_keys: "birdeye_wpt",
+      cnn_keys: "none",
       mlp_keys: "none",
       act: silu,
       norm: layer,
@@ -157,14 +143,14 @@ defaults:
     }
   loss_scales:
     {
-      image: 1.0,
+      image: 2.0,
       vector: 1.0,
-      reward: 2.0,
+      reward: 1.0,
       cont: 1.0,
       dyn: 0.5,
-      rep: 0.9,
-      actor: 3.0,
-      critic: 3.0,
+      rep: 0.1,
+      actor: 1.0,
+      critic: 1.0,
       slowreg: 1.0,
     }
   dyn_loss: { impl: kl, free: 1.0 }
@@ -178,9 +164,6 @@ defaults:
       wd: 0.0,
       warmup: 0,
       lateclip: 0.0,
-      decay_type: cosine,
-      decay_steps: 10000,
-      min_lr: 1e-6,
     }
 
   # Actor Critic
@@ -218,15 +201,12 @@ defaults:
   actor_opt:
     {
       opt: adam,
-      lr: 1e-4,
+      lr: 1.5e-5,
       eps: 1e-5,
       clip: 100.0,
       wd: 0.0,
       warmup: 0,
       lateclip: 0.0,
-      decay_type: null,
-      decay_steps: 0,
-      min_lr: 0.0,
     }
   critic_opt:
     {
@@ -237,16 +217,13 @@ defaults:
       wd: 0.0,
       warmup: 0,
       lateclip: 0.0,
-      decay_type: null,
-      decay_steps: 0,
-      min_lr: 0.0,
     }
   actor_dist_disc: onehot
   actor_dist_cont: normal
   actor_grad_disc: reinforce
   actor_grad_cont: backprop
   critic_type: vfunction
-  imag_horizon: 30
+  imag_horizon: 15
   imag_unroll: False
   horizon: 333
   return_lambda: 0.95
@@ -254,22 +231,12 @@ defaults:
   slow_critic_update: 1
   slow_critic_fraction: 0.02
   retnorm: { impl: perc_ema, decay: 0.99, max: 1.0, perclo: 5.0, perchi: 95.0 }
-  actent: 3e-4
+  actent: 5e-4
+  imag_smoothness_scale: 1e-4
 
   # Exploration
   expl_rewards: { extr: 1.0, disag: 0.1 }
-  expl_opt:
-    {
-      opt: adam,
-      lr: 1e-4,
-      eps: 1e-5,
-      clip: 100.0,
-      wd: 0.0,
-      warmup: 0,
-      decay_type: null,
-      decay_steps: 0,
-      min_lr: 0.0,
-    }
+  expl_opt: { opt: adam, lr: 1e-4, eps: 1e-5, clip: 100.0, wd: 0.0, warmup: 0 }
   disag_head:
     {
       layers: 5,
@@ -297,16 +264,16 @@ defaults:
     }
 
 xsmall:
-  rssm.deter: 126
+  rssm.deter: 64
   .*\.cnn_depth: 4
-  .*\.units: 128
+  .*\.units: 64
   .*\.layers: 2
 
 small:
   rssm.deter: 512
   .*\.cnn_depth: 32
   .*\.units: 512
-  .*\.layers: 1
+  .*\.layers: 2
 
 medium:
   rssm.deter: 1024

@@ -52,7 +52,11 @@ class SensorHandler(BaseHandler):
         return {self._config.key: self._get_observation_space()}
 
     def get_observation(self, env_state: Dict) -> Tuple[Dict, Dict]:
-        obs = {self._config.key: (self._data if self._data is not None else self._default_obs)}
+        obs = {
+            self._config.key: (
+                self._data if self._data is not None else self._default_obs
+            )
+        }
         info = {}
         return obs, info
 
@@ -62,7 +66,9 @@ class SensorHandler(BaseHandler):
             self._sensor.destroy()
 
     def reset(self, ego: carla.Actor) -> None:
-        self._sensor = self._world.spawn_unmanaged_actor(self._transform, self._blueprint, attach_to=ego)
+        self._sensor = self._world.spawn_unmanaged_actor(
+            self._transform, self._blueprint, attach_to=ego
+        )
         self._sensor.listen(self._update_data)
 
 
@@ -79,11 +85,11 @@ class CameraHandler(SensorHandler):
         camera_data = np.frombuffer(data.raw_data, dtype=np.uint8)
         camera_data = np.reshape(camera_data, (data.height, data.width, 4))
         camera_data = camera_data[:, :, :3]
-        camera_data = camera_data[:, :, ::-1] # BGR to RGB
+        camera_data = camera_data[:, :, ::-1]  # BGR to RGB
 
         # Store the high-resolution data for display
         self._hires_data = camera_data
-        
+
         # Resize to model's expected input shape as read from config (_config.shape)
         target_height = self._config.shape[0]
         target_width = self._config.shape[1]
@@ -93,13 +99,17 @@ class CameraHandler(SensorHandler):
 
     def get_observation(self, env_state: Dict) -> Tuple[Dict, Dict]:
         # This method needs to return both the low-res and high-res images
-        obs = {self._config.key: (self._data if self._data is not None else self._default_obs)}
+        obs = {
+            self._config.key: (
+                self._data if self._data is not None else self._default_obs
+            )
+        }
         info = {}
-        
+
         # Add the high-resolution image under a new key for display purposes
         # if self._hires_data is not None:
         #     obs[self._config.key + "_display"] = self._hires_data
-        
+
         return obs, info
 
 
@@ -125,7 +135,9 @@ class LidarHandler(SensorHandler):
         points = points[np.linalg.norm(points[:, :3], axis=1) <= self._obs_range]
         points[1, :] = -points[1, :]
 
-        intensities = np.interp(points[:, 3], (points[:, 3].min(), points[:, 3].max()), (0, 1))
+        intensities = np.interp(
+            points[:, 3], (points[:, 3].min(), points[:, 3].max()), (0, 1)
+        )
         colors = (intensities[:, np.newaxis] * np.array([[255, 0, 0]])).astype(np.uint8)
 
         y_bins = np.arange(
@@ -133,7 +145,9 @@ class LidarHandler(SensorHandler):
             self._ego_offset + self._lidar_bin,
             self._lidar_bin,
         )
-        x_bins = np.arange(-self._obs_range / 2, self._obs_range / 2 + self._lidar_bin, self._lidar_bin)
+        x_bins = np.arange(
+            -self._obs_range / 2, self._obs_range / 2 + self._lidar_bin, self._lidar_bin
+        )
         z_bins = [-self._lidar_z - 1, -self._lidar_z + 0.25, 1]
         lidar, _ = np.histogramdd(points[:, :3], bins=(x_bins, y_bins, z_bins))
 
@@ -153,7 +167,9 @@ class LidarHandler(SensorHandler):
 
 class CollisionHandler(SensorHandler):
     def _get_observation_space(self) -> spaces.Space:
-        return spaces.Box(low=0, high=np.inf, shape=self._config.shape, dtype=np.float32)
+        return spaces.Box(
+            low=0, high=np.inf, shape=self._config.shape, dtype=np.float32
+        )
 
     def _update_data(self, data) -> None:
         impulse = data.normal_impulse

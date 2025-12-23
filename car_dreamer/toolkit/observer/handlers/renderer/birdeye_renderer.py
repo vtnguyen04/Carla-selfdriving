@@ -22,6 +22,7 @@ class BirdeyeRenderer:
         pixels_ahead_vehicle: int,
         sight_fov: Union[float, List[float], Tuple[float]],
         sight_range: Union[float, List[float], Tuple[float]],
+        config,
     ):
         self._pixels_per_meter = pixels_per_meter
         self._screen_size = screen_size
@@ -29,6 +30,7 @@ class BirdeyeRenderer:
         self._sight_fov = sight_fov
         self._sight_range = sight_range
         self._world_manager = world_manager
+        self._config = config # Store the config
 
         self._map_renderer = MapRenderer(world_manager.carla_world, world_manager.carla_map, pixels_per_meter)
         self._world_to_pixel = self._map_renderer.world_to_pixel
@@ -82,9 +84,24 @@ class BirdeyeRenderer:
 
     def _render_ego_vehicle(self, **env_state):
         """Render the ego actor on the surface."""
-        color = env_state.get("ego_vehicle_color", Color.RED)
-        ego_polygon = self._world_manager.actor_polygons[self._ego.id]
-        self._render_polygon(self._surface, ego_polygon, color)
+        if hasattr(self._config, 'gps_simulation') and self._config.gps_simulation.enable and self._config.gps_simulation.simple_ego_representation:
+            # Use delayed ego pose location to draw a simple dot
+            delayed_ego_pose = env_state.get("delayed_ego_pose")
+            if delayed_ego_pose:
+                ego_location = carla.Location(x=delayed_ego_pose['location'][0], y=delayed_ego_pose['location'][1])
+                ego_pixel = self._world_to_pixel(ego_location)
+                # Draw a reasonably large red circle
+                radius = int(5 * self._pixels_per_meter / 10) # Adjust radius based on pixels_per_meter, default 5px for visibility
+                cv2.circle(self._surface, ego_pixel, radius, Color.RED, cv2.FILLED)
+            else: # Fallback to true pose if delayed_ego_pose is not in env_state
+                color = env_state.get("ego_vehicle_color", Color.RED)
+                ego_polygon = self._world_manager.actor_polygons[self._ego.id]
+                self._render_polygon(self._surface, ego_polygon, color)
+        else:
+            # Original rendering logic: render detailed polygon
+            color = env_state.get("ego_vehicle_color", Color.RED)
+            ego_polygon = self._world_manager.actor_polygons[self._ego.id]
+            self._render_polygon(self._surface, ego_polygon, color)
 
     def _render_fov_lines(self, **env_state):
         """Render the field of view using lines and arcs on the surface."""

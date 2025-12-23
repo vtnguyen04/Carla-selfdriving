@@ -49,6 +49,19 @@ def get_vehicle_pos(vehicle: carla.Actor) -> Tuple[float, float]:
     return location.x, location.y
 
 
+def get_vehicle_rotation(vehicle: carla.Actor) -> carla.Rotation:
+    """
+    Get the rotation of a vehicle.
+
+    :param vehicle: carla.Actor
+
+    :return: carla.Rotation of the vehicle
+    """
+    return vehicle.get_transform().rotation
+
+
+
+
 def get_vehicle_orientation(vehicle: carla.Actor) -> float:
     """
     Get the orientation of a vehicle.
