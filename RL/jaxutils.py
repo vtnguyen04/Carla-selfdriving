@@ -7,10 +7,6 @@ import optax
 from tensorflow_probability.substrates import jax as tfp
 
 from . import ninjax as nj
-from car_dreamer.toolkit.utils import get_logger
-
-log = get_logger(log_dir=".", job_name="jaxutils")
-
 
 tfd = tfp.distributions
 tree_map = jax.tree_util.tree_map
@@ -74,206 +70,6 @@ def symlog(x):
 
 def symexp(x):
     return jnp.sign(x) * (jnp.exp(jnp.abs(x)) - 1)
-
-
-class VICRegLoss:
-    """Simplified VICReg - chỉ Invariance + Variance"""
-
-    def __init__(
-        self,
-        sim_weight=25.0,
-        var_weight=25.0,
-        var_target=1.0,
-        eps=1e-4,
-    ):
-        self.sim_weight = sim_weight
-        self.var_weight = var_weight
-        self.var_target = var_target
-        self.eps = eps
-
-    def __call__(self, pred, target):
-        pred_flat = pred.reshape(-1, pred.shape[-1])
-        target_flat = target.reshape(-1, target.shape[-1])
-
-        # Invariance (MSE)
-        sim_loss = ((pred_flat - target_flat) ** 2).mean()
-
-        # Variance
-        std_pred = jnp.sqrt(pred_flat.var(axis=0) + self.eps)
-        std_target = jnp.sqrt(target_flat.var(axis=0) + self.eps)
-        var_loss = (
-            jnp.maximum(0, self.var_target - std_pred).mean()
-            + jnp.maximum(0, self.var_target - std_target).mean()
-        )
-
-        total = self.sim_weight * sim_loss + self.var_weight * var_loss
-
-        return total, {
-            "vicreg_total": total,
-            "vicreg_sim": sim_loss,
-            "vicreg_var": var_loss,
-            "pred_std": std_pred.mean(),
-        }
-
-
-class JEPALoss:
-    """
-    JEPA Loss đơn giản hơn VICReg
-
-    Chỉ dùng MSE + optional variance regularization
-    """
-
-    def __init__(self, var_weight=0.1, var_target=1.0, eps=1e-4):
-        self.var_weight = var_weight
-        self.var_target = var_target
-        self.eps = eps
-
-    def __call__(self, pred, target):
-        """
-        Args:
-            pred: [batch, dim]
-            target: [batch, dim]
-
-        Returns:
-            loss, metrics
-        """
-        pred_flat = pred.reshape(-1, pred.shape[-1])
-        target_flat = target.reshape(-1, target.shape[-1])
-
-        # MSE loss
-        mse_loss = ((pred_flat - target_flat) ** 2).mean()
-
-        # Variance regularization (optional)
-        std = jnp.sqrt(pred_flat.var(axis=0) + self.eps)
-        var_loss = jnp.maximum(0, self.var_target - std).mean()
-
-        total_loss = mse_loss + self.var_weight * var_loss
-
-        metrics = {
-            "jepa_mse": mse_loss,
-            "jepa_var": var_loss,
-            "jepa_total": total_loss,
-            "pred_std": std.mean(),
-        }
-
-        return total_loss, metrics
-
-
-# Đơn giản nhất - không cần SVD
-class CollapseMetrics:
-    @staticmethod
-    def compute(z, prefix=""):
-        z_flat = z.reshape(-1, z.shape[-1])
-        dim_std = z_flat.std(axis=0)
-
-        return {
-            f"{prefix}std_mean": dim_std.mean(),
-            f"{prefix}std_min": dim_std.min(),
-            f"{prefix}std_max": dim_std.max(),
-            f"{prefix}dead_dims": (dim_std < 0.01).sum(),
-        }
-
-
-class EMAUpdater(nj.Module):
-    """
-    Exponential Moving Average updater cho target network
-
-    target_params = decay * target_params + (1 - decay) * online_params
-    """
-
-    def __init__(self, decay=0.99):
-        self.decay = decay
-        self.updates = nj.Variable(jnp.zeros, (), jnp.int32, name="updates")
-
-    def __call__(self, online_params, target_params):
-        """
-        Update target params với EMA
-
-        Args:
-            online_params: dict của parameters từ online network
-            target_params: dict của parameters từ target network
-
-        Returns:
-            new_target_params: updated parameters
-        """
-        updates = self.updates.read()
-
-        # First update: copy hoàn toàn
-        is_first = (updates == 0).astype(jnp.float32)
-
-        # EMA mixing coefficient
-        decay = (
-            self.decay * (1 - is_first) + 0.0 * is_first
-        )  # 0 nếu first, decay nếu không
-
-        # Update
-        new_target = tree_map(
-            lambda o, t: decay * t + (1 - decay) * o, online_params, target_params
-        )
-
-        self.updates.write(updates + 1)
-
-        return new_target
-
-
-def compute_collapse_metrics(z, prefix=""):
-    """
-    Wrapper function cho CollapseMetrics.compute()
-    Để tương thích với cả 2 cách gọi
-    """
-    return CollapseMetrics.compute(z, prefix)
-
-
-# ============================================================================
-# HELPER FUNCTION - EMA update (function version)
-# ============================================================================
-
-
-def ema_update(online_params, target_params, decay=0.99):
-    """
-    Function version của EMA update
-    Không track state, chỉ tính toán đơn giản
-    """
-    return tree_map(
-        lambda o, t: decay * t + (1 - decay) * o, online_params, target_params
-    )
-
-
-class MultiStepPredictor:
-    """
-    Utility để predict nhiều steps trong tương lai
-    """
-
-    @staticmethod
-    def predict_trajectory(predictor_fn, initial_state, actions, max_steps=None):
-        """
-        Predict trajectory trong latent space
-
-        Args:
-            predictor_fn: function(state, action) -> next_state
-            initial_state: starting state
-            actions: sequence of actions [time, ...]
-            max_steps: maximum steps to predict (None = all)
-
-        Returns:
-            predicted_states: [time, ...]
-        """
-        if max_steps is None:
-            max_steps = actions.shape[0]
-
-        def step(carry, action):
-            state = carry
-            next_state = predictor_fn(state, action)
-            return next_state, next_state
-
-        _, trajectory = jax.lax.scan(step, initial_state, actions[:max_steps])
-
-        return trajectory
-
-
-# ============================================================================
-# EXISTING UTILITIES (giữ nguyên)
-# ============================================================================
 
 
 class OneHotDist(tfd.OneHotCategorical):
@@ -588,44 +384,12 @@ class Optimizer(nj.Module):
         wd=0.0,
         wd_pattern=r"/(w|kernel)$",
         lateclip=0.0,
-        decay_type=None,  # Added
-        decay_steps=0,  # Added
-        min_lr=0.0,  # Added
     ):
         assert opt in ("adam", "belief", "yogi")
         assert wd_pattern[0] not in ("0", "1")
         # assert self.path not in self.PARAM_COUNTS
         self.PARAM_COUNTS[self.path] = None
         wd_pattern = re.compile(wd_pattern)
-        chedules = []
-        # Base schedule: constant LR or linear warmup
-        if warmup > 0:
-            schedules.append(optax.linear_schedule(0.0, -lr, warmup))
-        else:
-            schedules.append(optax.constant_schedule(-lr))
-
-        # Add decay schedule if specified
-        if decay_steps > 0:
-            if decay_type == "cosine":
-                # Cosine decay starts from the initial LR (after warmup if applicable)
-                # and decays to min_lr over decay_steps
-                cosine_schedule = optax.cosine_decay_schedule(
-                    init_value=-lr, decay_steps=decay_steps, alpha=min_lr / lr
-                )
-                # If there's a warmup, we need to combine it with the decay.
-                # Optax's join_schedules handles this.
-                if warmup > 0:
-                    schedules = [
-                        optax.join_schedules(
-                            schedules=[schedules[0], cosine_schedule],
-                            boundaries=[warmup],
-                        )
-                    ]
-                else:
-                    schedules = [cosine_schedule]
-            # Add other decay types here if needed (e.g., exponential)
-            elif decay_type is not None:
-                raise NotImplementedError(f"Decay type '{decay_type}' not implemented.")
         chain = []
         if clip:
             chain.append(optax.clip_by_global_norm(clip))
@@ -646,7 +410,11 @@ class Optimizer(nj.Module):
                     ),
                 )
             )
-        chain.append(optax.inject_hyperparams(optax.scale)(schedules[0]))
+        if warmup:
+            schedule = optax.linear_schedule(0.0, -lr, warmup)
+            chain.append(optax.inject_hyperparams(optax.scale)(schedule))
+        else:
+            chain.append(optax.scale(-lr))
         self.opt = optax.chain(*chain)
         self.step = nj.Variable(jnp.array, 0, jnp.int32, name="step")
         self.scaling = COMPUTE_DTYPE == jnp.float16
@@ -673,7 +441,7 @@ class Optimizer(nj.Module):
         )
         if not self.PARAM_COUNTS[self.path]:
             count = sum([np.prod(x.shape) for x in params.values()])
-            log.info(f"Optimizer {self.name} has {count:,} variables.")
+            print(f"Optimizer {self.name} has {count:,} variables.")
             self.PARAM_COUNTS[self.path] = count
         if parallel():
             grads = tree_map(lambda x: jax.lax.pmean(x, "i"), grads)
