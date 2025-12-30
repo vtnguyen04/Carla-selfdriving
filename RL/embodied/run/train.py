@@ -119,7 +119,7 @@ def train(agent, env, replay, logger, args):
     timer.wrap("checkpoint", checkpoint, ["save", "load"])
     checkpoint.step = step
     checkpoint.agent = agent
-    checkpoint.replay = replay
+    # checkpoint.replay = replay # Disabled to save I/O time. Replay buffer will be refilled on resume.
     if args.from_checkpoint:
         checkpoint.load(args.from_checkpoint)
     checkpoint.load_or_save()
