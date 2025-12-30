@@ -7,7 +7,6 @@ wget https://tiny.carla.org/carla-0-9-15-linux
 mkdir carla_simulate
 tar -xvzf carla-0-9-15-linux -C carla_simulate
 
-```bash
 export CARLA_ROOT=/workspace/Carla-selfdriving/carla_simulate
 export PYTHONPATH="${CARLA_ROOT}/PythonAPI/carla":${PYTHONPATH}
 ```
@@ -45,27 +44,26 @@ chmod +x ./train_dm3.sh
 
 # Ví dụ 1: Dùng cài đặt mặc định để đào tạo tác nhân
 ./train_dm3.sh 2000 0 --task carla_four_lane --dreamerv3.logdir ./logdir/carla_four_lane
-# Ví dụ 2: Ghi đè task và tham số mô hình
+# tùy chọn kích thước mô hình và task mong muốn
+./train_dm3.sh 2000 0 --task carla_navigation --dreamerv3.logdir ./logdir/carla_navigation --model_size xsmall
+hoặc
+./train_dm3.sh 2000 0 --task carla_right_turn_simple --dreamerv3.logdir ./logdir/carla_right_turn_simple --model_size small
+
+
 ./train_dm3.sh 2000 0 --task carla_right_turn_simple \
     --dreamerv3.logdir ./logdir/carla_right_turn_simple \
     --dreamerv3.run.steps=5e6
 
-./train_dm3.sh 2000 0 --task carla_right_turn_simple --dreamerv3.logdir ./logdir/carla_right_turn_simple --model_size small
-
 ```
-
-`2000` là số cổng (port) của server CARLA. Script sẽ tự động khởi động server nên bạn không cần khởi động thủ công.
-`0` là số GPU.
-`--task` là tên tác vụ và `--dreamerv3.logdir` là thư mục để lưu nhật ký (logs) đào tạo. Để xem danh sách đầy đủ các task và cấu hình của chúng, xem tài liệu tại [documentation](https://car-dreamer.readthedocs.io/en/latest/tasks.html).
 
 ## Trực quan hóa
 
-Theo dõi dữ liệu trực tuyến có thể truy cập trên trang web tại `http://localhost:9000/`, cổng này nên được thay đổi thành `<carla-port> + 7000` nếu bạn không dùng cổng mặc định `2000` của CARLA server.
+Theo dõi dữ liệu trực tuyến có thể truy cập trên trang web tại `http://localhost:9000/`
 
 Ghi log dữ liệu ngoại tuyến có thể truy cập qua TensorBoard.
 
 ```bash
-tensorboard --logdir ./logdir/carla_four_lane
+tensorboard --logdir ./logdir/tên-folder-log
 ```
 
 Mở `http://localhost:6006/` trong trình duyệt để xem kết quả.
@@ -75,5 +73,5 @@ Mở `http://localhost:6006/` trong trình duyệt để xem kết quả.
 Chạy các lệnh sau để đánh giá mô hình đã huấn luyện, trong đó đối số thứ ba là đường dẫn tới checkpoint:
 
 ```bash
-bash eval_dm3.sh 2000 0 ./logdir/carla_four_lane/checkpoint.ckpt --task carla_four_lane --dreamerv3.logdir ./logdir/eval_carla_four_lane
+bash eval_dm3.sh 2000 0 ./logdir/carla_four_lane/checkpoint.ckpt --task carla_four_lane --dreamerv3.logdir ./logdir/carla_navigation
 ```
