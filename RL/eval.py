@@ -119,51 +119,70 @@ def eval_only(agent, env, logger, args):
 
 
 def main(argv=None):
-    # BOILERPLATE START
-    log = get_logger(log_dir=".", job_name="main_eval")
-    model_configs = yaml.YAML(typ="safe").load(
-        (embodied.Path(__file__).parent / "dreamerv3.yaml").read()
-    )
+    # Add project root to path
+    import pathlib
+    import sys
+    root = pathlib.Path(__file__).parent.parent
+    sys.path.append(str(root))
+
+    # Initial argument parsing
     if argv is None:
         argv = sys.argv[1:]
-    # BOILERPLATE END
+    
+    temp_flags = embodied.Flags(method="dreamerv3", model_size="small")
+    temp_parsed, temp_other = temp_flags.parse_known(argv)
+    method = temp_parsed.method
+    model_size = temp_parsed.model_size
 
-    # 1. Parse flags that determine config files (model_size, task)
-    pre_parsed, other_argv = embodied.Flags(
-        model_size="small", task=["carla_navigation"]
-    ).parse_known(argv)
+    log = get_logger(log_dir=".", job_name="main_eval")
+    
+    # Load configuration based on method
+    if method == "dreamerv3":
+        config_path = embodied.Path(__file__).parent / "dreamerv3/dreamerv3.yaml"
+    elif method == "tdmpc2":
+        config_path = embodied.Path(__file__).parent / "tdmpc2/tdmpc2.yaml"
+    else:
+        raise ValueError(f"Unknown method: {method}")
 
-    # 2. Build base config from dreamerv3.yaml (defaults + model_size)
-    model_size = pre_parsed.model_size
+    model_configs = yaml.YAML(typ="safe").load(config_path.read())
+    
     if model_size not in model_configs:
-        raise ValueError(
-            f"Unknown model_size: {model_size}. Available: {list(model_configs.keys())}"
-        )
-    config = embodied.Config({"dreamerv3": model_configs["defaults"]})
-    config = config.update({"dreamerv3": model_configs[model_size]})
+        raise ValueError(f"Unknown model_size: {model_size}. Available: {list(model_configs.keys())}")
 
-    # 3. Load and merge task-specific configs
-    task_name = pre_parsed.task[0]  # Assuming one task for eval
+    # Initialize Config
+    config = embodied.Config({method: model_configs["defaults"]})
+    config = config.update({method: model_configs[model_size]})
+
+    # Parse task early to load environment configs
+    pre_parsed, other_argv = embodied.Flags(
+        task=["carla_navigation"]
+    ).parse_known(temp_other)
+
+    task_name = pre_parsed.task[0]
     log.info(f"Using task: {task_name}")
     env_config = car_dreamer.load_task_configs(task_name)
     config = config.update(env_config)
 
-    # 4. Load and merge hires config if requested
+    # Load and merge hires config if requested
     if "--hires" in other_argv:
         log.info("High-resolution mode requested. Loading eval_hires.yaml.")
-        hires_config = yaml.YAML(typ="safe").load(
-            (embodied.Path(__file__).parent / "eval_hires.yaml").read()
-        )
+        hires_path = embodied.Path(__file__).parent / "eval_hires.yaml"
+        hires_config = yaml.YAML(typ="safe").load(hires_path.read())
         config = config.update(hires_config)
-        # Remove the flag so the final parser doesn't see it
         other_argv = [arg for arg in other_argv if arg != "--hires"]
 
-    # 5. Final parse of all remaining command-line flags
-    # This uses the fully merged config to parse remaining overrides.
+    # Filter arguments to prevent mismatch errors
+    if method == "tdmpc2":
+        other_argv = [arg for arg in other_argv if not arg.startswith("--dreamerv3.")]
+    elif method == "dreamerv3":
+        other_argv = [arg for arg in other_argv if not arg.startswith("--tdmpc2.")]
+
+    # Final parse of all remaining command-line flags
     config = embodied.Flags(config).parse(other_argv)
 
-    # 6. Create logger
-    logdir = embodied.Path(config.dreamerv3.logdir)
+    # Logdir setup
+    method_config = config[method]
+    logdir = embodied.Path(method_config.logdir)
     step = embodied.Counter()
     logger = embodied.Logger(
         step,
@@ -174,18 +193,17 @@ def main(argv=None):
         ],
     )
 
-    # 7. Create and wrap the environment *with the final config*
+    # Create and wrap the environment
     import gym
     from embodied.envs import from_gym
 
     env = gym.make(config.env.name, config=config.env)
-    dreamerv3_config = config.dreamerv3  # for wrappers and agent
     env = from_gym.FromGym(env)
-    env = wrap_env(env, dreamerv3_config)
+    env = wrap_env(env, method_config)
     env = embodied.BatchEnv([env], parallel=False)
 
-    # 8. Update config with runtime values
-    dreamerv3_config = dreamerv3_config.update(
+    # Update config with runtime values
+    method_config = method_config.update(
         {
             "run.log_keys_sum": "(travel_distance|destination_reached|out_of_lane|time_exceeded|is_collision|timesteps)",
             "run.log_keys_mean": "(travel_distance|ttc|speed_norm|wpt_dis)",
@@ -195,12 +213,16 @@ def main(argv=None):
         }
     )
 
-    # 9. Create agent and run evaluation
-    agent = RL.Agent(env.obs_space, env.act_space, step, dreamerv3_config)
+    # Instantiate Agent
+    if method == "dreamerv3":
+        agent = RL.Agent(env.obs_space, env.act_space, step, method_config)
+    elif method == "tdmpc2":
+        agent = RL.TDMPC2Agent(env.obs_space, env.act_space, step, method_config)
+
     args = embodied.Config(
-        **dreamerv3_config.run,
-        logdir=dreamerv3_config.logdir,
-        batch_steps=dreamerv3_config.batch_size * dreamerv3_config.batch_length,
+        **method_config.run,
+        logdir=method_config.logdir,
+        batch_steps=method_config.batch_size * method_config.batch_length,
     )
     eval_only(agent, env, logger, args)
 

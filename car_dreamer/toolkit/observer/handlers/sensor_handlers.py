@@ -106,7 +106,7 @@ class CameraHandler(SensorHandler):
         }
         info = {}
 
-        # Add the high-resolution image under a new key for display purposes
+        # # Add the high-resolution image under a new key for display purposes
         # if self._hires_data is not None:
         #     obs[self._config.key + "_display"] = self._hires_data
 

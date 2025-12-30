@@ -23,6 +23,9 @@ class RandomPlanner(BasePlanner):
 
     def _compute_next_waypoint(self):
         waypoints = self.get_all_waypoints()
+        if len(waypoints) == 0:
+            self.init_route()
+            waypoints = self.get_all_waypoints()
         last_waypoint = waypoints[-1]
         last_waypoint = self._map.get_waypoint(carla.Location(last_waypoint[0], last_waypoint[1], 0), project_to_road=True)
         next_waypoints = list(last_waypoint.next(self._sampling_radius))

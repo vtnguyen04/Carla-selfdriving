@@ -4,11 +4,11 @@ git clone https://github.com/vtnguyen04/Carla-selfdriving.git
 cd Carla-selfdriving
 
 wget https://tiny.carla.org/carla-0-9-15-linux
-tar -xzf CARLA_0.9.15.tar.gz carla_simulate
-
+mkdir carla_simulate
+tar -xvzf carla-0-9-15-linux -C carla_simulate
 
 ```bash
-export CARLA_ROOT="</path/to/carla>"
+export CARLA_ROOT=/workspace/Carla-selfdriving/carla_simulate
 export PYTHONPATH="${CARLA_ROOT}/PythonAPI/carla":${PYTHONPATH}
 ```
 
@@ -22,10 +22,10 @@ flit install --symlink
 ```
 
 ```bash
-cd RL
-conda install -c "nvidia/label/cuda-12.8.0" cuda-toolkit
+conda install -c "nvidia/label/cuda-11.8.0" cuda-toolkit
 pip install -r requirements.txt
 pip install "jax[cuda12_pip]==0.4.34" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+
 ```
 
 Thiết lập CARLA và biến môi trường:
@@ -41,7 +41,7 @@ export LD_LIBRARY_PATH=$CUDNN_PATH/lib:$CUSOLVER_PATH/lib:$CONDA_PREFIX/lib:$LD_
 Chạy script đào tạo với các cấu hình mong muốn:
 ```bash
 cd ..
-chmode +x ./train_dm3
+chmod +x ./train_dm3.sh
 
 # Ví dụ 1: Dùng cài đặt mặc định để đào tạo tác nhân
 ./train_dm3.sh 2000 0 --task carla_four_lane --dreamerv3.logdir ./logdir/carla_four_lane
@@ -50,7 +50,7 @@ chmode +x ./train_dm3
     --dreamerv3.logdir ./logdir/carla_right_turn_simple \
     --dreamerv3.run.steps=5e6
 
-./train_dm3.sh 2000 0 --task carla_navigation --dreamerv3.logdir ./logdir/carla_navigation1 --model_size xsmall --dreamerv3.world_model reconstruction
+./train_dm3.sh 2000 0 --task carla_right_turn_simple --dreamerv3.logdir ./logdir/carla_right_turn_simple --model_size small
 
 ```
 

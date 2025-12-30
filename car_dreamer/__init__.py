@@ -47,6 +47,8 @@ def load_task_configs(task_name: str):
     with open(os.path.join(dir, "tasks.yaml")) as f:
         task_config = yaml.safe_load(f)
         config = config.update(task_config[task_name])
+    # Add task_name to root and env section so monitors can find it
+    config = config.update({"task_name": task_name, "env": {"task_name": task_name}})
     return config
 
 

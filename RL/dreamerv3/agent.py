@@ -16,8 +16,8 @@ class CheckTypesFilter(logging.Filter):
 
 logger.addFilter(CheckTypesFilter())
 
-from . import behaviors, jaxagent, jaxutils, nets
-from . import ninjax as nj
+from .. import behaviors, jaxagent, jaxutils, nets
+from .. import ninjax as nj
 
 
 @jaxagent.Wrapper
@@ -148,8 +148,7 @@ class WorldModel(nj.Module):
         self.opt = jaxutils.Optimizer(name="model_opt", **config.model_opt)
         scales = self.config.loss_scales.copy()
         image, vector = scales.pop("image"), scales.pop("vector")
-        all_cnn_keys = [k for res_shapes in self.heads["decoder"].cnn_shapes.values() for k in res_shapes.keys()]
-        scales.update({k: image for k in all_cnn_keys})
+        scales.update({k: image for k in self.heads["decoder"].cnn_shapes})
         scales.update({k: vector for k in self.heads["decoder"].mlp_shapes})
         self.scales = scales
 
@@ -257,8 +256,7 @@ class WorldModel(nj.Module):
         start = {k: v[:, -1] for k, v in context.items()}
         recon = self.heads["decoder"](context)
         openl = self.heads["decoder"](self.rssm.imagine(data["action"][:6, 5:], start))
-        all_cnn_keys = [k for res_shapes in self.heads["decoder"].cnn_shapes.values() for k in res_shapes.keys()]
-        for key in all_cnn_keys:
+        for key in self.heads["decoder"].cnn_shapes.keys():
             truth = data[key][:6].astype(jnp.float32)
             model = jnp.concatenate([recon[key].mode()[:, :5], openl[key].mode()], 1)
             error = (model - truth + 1) / 2

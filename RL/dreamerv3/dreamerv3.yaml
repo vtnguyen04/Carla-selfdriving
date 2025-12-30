@@ -264,9 +264,9 @@ defaults:
     }
 
 xsmall:
-  rssm.deter: 64
-  .*\.cnn_depth: 4
-  .*\.units: 64
+  rssm.deter: 512
+  .*\.cnn_depth: 16
+  .*\.units: 512
   .*\.layers: 2
 
 small:

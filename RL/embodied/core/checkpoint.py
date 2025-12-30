@@ -60,13 +60,38 @@ class Checkpoint:
         assert all([not k.startswith("_") for k in keys]), keys
         data = {k: self._values[k].save() for k in keys}
         data["_timestamp"] = time.time()
+        
+        # Prepare content
+        packed_data = basics.pack(data)
+        
+        # Atomic write: Save to .tmp first
+        tmp_file = filename.parent / (filename.name + ".tmp")
+        tmp_file.write(packed_data, mode="wb")
+        
+        # If successfully written, rename to main file
         if filename.exists():
             old = filename.parent / (filename.name + ".old")
-            filename.copy(old)
-            filename.write(basics.pack(data), mode="wb")
+            filename.move(old)
+            tmp_file.move(filename)
             old.remove()
         else:
-            filename.write(basics.pack(data), mode="wb")
+            tmp_file.move(filename)
+            
+        # Optional: Save a versioned checkpoint if step is available
+        if "step" in self._values:
+            step = int(self._values["step"].value)
+            versioned = filename.parent / f"{filename.stem}_{step:09d}{filename.suffix}"
+            filename.copy(versioned)
+            self._log and log.info(f"Saved versioned checkpoint: {versioned.name}")
+            
+            # Clean up old versioned checkpoints (keep last 5)
+            pattern = f"{filename.stem}_*{filename.suffix}"
+            all_versioned = sorted(filename.parent.glob(pattern))
+            if len(all_versioned) > 5:
+                for old_ver in all_versioned[:-5]:
+                    old_ver.remove()
+                    self._log and log.info(f"Removed old checkpoint: {old_ver.name}")
+
         self._log and log.info(f"Wrote checkpoint: {filename}")
 
     def load(self, filename=None, keys=None):

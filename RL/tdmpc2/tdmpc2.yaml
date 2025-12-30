@@ -1,0 +1,205 @@
+defaults:
+  seed: 0
+  method: tdmpc2
+  task: dummy_disc
+  logdir: /dev/null
+  replay: uniform
+  replay_size: 1e6
+  replay_online: False
+  eval_dir: ""
+  filter: ".*"
+  data_loaders: 0
+
+  jax:
+    platform: gpu
+    jit: True
+    precision: float16
+    prealloc: False
+    debug_nans: False
+    logical_cpus: 0
+    debug: False
+    policy_devices: [0]
+    train_devices: [0]
+    metrics_every: 10
+
+  run:
+    script: train
+    steps: 1e7
+    expl_until: 10000
+    log_every: 500
+    save_every: 2000
+    eval_every: 1e4
+    eval_initial: True
+    eval_eps: 1
+    eval_samples: 1
+    train_ratio: 512
+    train_fill: 1000
+    eval_fill: 0
+    log_zeros: False
+    log_keys_video: [none]
+    log_keys_sum: "^$"
+    log_keys_mean: "(log_entropy)"
+    log_keys_max: "^$"
+    from_checkpoint: ""
+    sync_every: 10
+
+  envs:
+    {
+      amount: 1,
+      parallel: process,
+      length: 0,
+      reset: True,
+    }
+  wrapper: { length: 0, reset: True, discretize: 0, checks: False }
+
+  # Agent (TD-MPC2 Specific)
+  batch_size: 256
+  batch_length: 16  # TD-MPC2 usually samples single transitions or short chunks, but uses replay buffer differently. We will stick to 1 for simplified training logic initially or adjust in agent.
+  horizon: 5       # Planning horizon
+  rho: 0.5         # MPPI Variance scaling (temperature)
+  num_samples: 512 # MPPI samples
+  iterations: 6    # MPPI iterations
+  mixture_coef: 0.05 # MPPI mixture coefficient
+  mppi_temp: 0.1   # MPPI temperature
+  discount: 0.99   # Discount factor
+  expl_noise: 0.1  # Exploration noise
+  
+  # Model Architecture
+  latent_dim: 512
+  enc_dim: 256
+  mlp_dim: 512
+  
+  # World Model (TOLD)
+  grad_heads: [dynamics, reward, q]
+  
+  encoder:
+    {
+      cnn_keys: "image",
+      mlp_keys: ".*",
+      act: silu,
+      norm: layer,
+      mlp_layers: 2,
+      mlp_units: 256,
+      cnn: resnet,
+      cnn_depth: 32,
+      cnn_blocks: 0,
+      resize: stride,
+      winit: normal,
+      fan: avg,
+      symlog_inputs: True,
+      minres: 4,
+    }
+  
+  dynamics:
+    {
+      layers: 2,
+      units: 512,
+      act: silu,
+      norm: layer,
+      inputs: [tensor],
+    }
+    
+  reward_head:
+    {
+      layers: 2,
+      units: 512,
+      act: silu,
+      norm: layer,
+      dist: symlog_disc, 
+      bins: 255,
+      outscale: 0.0,
+      inputs: [tensor],
+    }
+    
+  q_head:
+    {
+      layers: 2,
+      units: 512,
+      act: silu,
+      norm: layer,
+      dist: symlog_disc,
+      bins: 255,
+      outscale: 0.0, 
+      inputs: [tensor],
+    }
+
+  actor:
+    {
+      layers: 2,
+      units: 512,
+      act: silu,
+      norm: layer,
+      dist: normal,
+      minstd: 0.1,
+      maxstd: 1.0,
+      outscale: 1.0,
+      outnorm: False,
+      unimix: 0.01,
+      inputs: [tensor],
+      winit: normal,
+      fan: avg,
+      symlog_inputs: False,
+    }
+
+  # Optimization
+  model_opt:
+    {
+      opt: adam,
+      lr: 3e-4,
+      eps: 1e-8,
+      clip: 100.0,
+      wd: 0.01,
+      warmup: 0,
+    }
+  
+  target_ema_decay: 0.98
+  target_ema_period: 1
+  
+  consistency_loss_scale: 10.0
+  reward_loss_scale: 1.0
+  q_loss_scale: 1.0
+  p_loss_scale: 1.0
+  s_loss_scale: 0.1
+  
+  # Replay Configuration
+  replay_hyper:
+    {
+      initial_priority: 1e5,
+      c: 1e4,
+      beta: 0.7,
+      epsilon: 0.01,
+      alpha: 0.7,
+      key_find_priority: 1e7,
+    }
+
+xxsmall:
+  latent_dim: 64
+  mlp_dim: 64
+  num_samples: 64
+  encoder.cnn_depth: 16
+  encoder.mlp_units: 64
+  dynamics.units: 64
+  reward_head.units: 64
+  value_head.units: 64
+  q_head.units: 64
+  actor.units: 64
+
+xsmall:
+  latent_dim: 128
+  mlp_dim: 128
+  num_samples: 64
+
+small:
+  latent_dim: 256
+  mlp_dim: 256
+  num_samples: 128
+  
+medium:
+  latent_dim: 512
+  mlp_dim: 512
+  num_samples: 256
+
+large:
+  latent_dim: 1024
+  mlp_dim: 1024
+  num_samples: 512

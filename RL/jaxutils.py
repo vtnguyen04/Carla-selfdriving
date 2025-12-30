@@ -401,7 +401,7 @@ class Optimizer(nj.Module):
             chain.append(late_grad_clip(lateclip))
         if wd:
             chain.append(
-                optax.additive_weight_decay(
+                optax.add_decayed_weights(
                     wd,
                     lambda params: (
                         tree_map(
@@ -440,9 +440,27 @@ class Optimizer(nj.Module):
             *args, **kwargs
         )
         if not self.PARAM_COUNTS[self.path]:
-            count = sum([np.prod(x.shape) for x in params.values()])
-            print(f"Optimizer {self.name} has {count:,} variables.")
-            self.PARAM_COUNTS[self.path] = count
+            total_count = sum([np.prod(x.shape) for x in jax.tree_util.tree_leaves(params)])
+            print(f"Optimizer {self.name} has {total_count:,} variables.")
+            self.PARAM_COUNTS[self.path] = total_count
+            
+            # Log detailed parameter counts
+            def log_param_shapes(p, prefix=""):
+                if hasattr(p, "items"):
+                    for k, v in p.items():
+                        log_param_shapes(v, prefix + "/" + k)
+                elif isinstance(p, list):
+                    for i, v in enumerate(p):
+                        log_param_shapes(v, prefix + f"/{i}")
+                else:
+                    # It's a leaf (array)
+                    count = np.prod(p.shape)
+                    if count > 10000: # Only log significant blocks
+                        print(f"  {prefix}: {count:,} ({p.shape})")
+            
+            print("Parameter breakdown:")
+            log_param_shapes(params)
+
         if parallel():
             grads = tree_map(lambda x: jax.lax.pmean(x, "i"), grads)
         if self.scaling:

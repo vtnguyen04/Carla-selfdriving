@@ -16,7 +16,10 @@ class CarlaBaseEnv(gym.Env):
     def __init__(self, config):
         self._config = config
 
-        if self._config.display.get("use_local_window", False):
+        if self._config.display.get("save_video", False):
+            from .toolkit.monitor.monitor import EnvMonitorVideo
+            self._monitor = EnvMonitorVideo(self._config)
+        elif self._config.display.get("use_local_window", False):
             self._monitor = EnvMonitorLocalCV(self._config)
         else:
             self._monitor = EnvMonitorOpenCV(self._config)

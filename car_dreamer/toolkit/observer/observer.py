@@ -39,7 +39,9 @@ class Observer:
         """
         if SIMPLE_HANDLER_NAME not in self._data_handlers:
             self._data_handlers[SIMPLE_HANDLER_NAME] = SimpleHandler(self._world, {})
-        self._data_handlers[SIMPLE_HANDLER_NAME].register_observation(key, observation_fn, observation_space)
+        self._data_handlers[SIMPLE_HANDLER_NAME].register_observation(
+            key, observation_fn, observation_space
+        )
 
     def destroy(self) -> None:
         """Destroy all the registered handlers."""

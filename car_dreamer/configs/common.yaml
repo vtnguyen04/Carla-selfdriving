@@ -3,7 +3,7 @@ env:
 
   world:
     carla_port: 2000
-    town: "Town04" # which town map to use
+    town: "Town03" # which town map to use
     actor_active_distance: 100
     fixed_delta_seconds: 0.1
     auto_lane_change: True
@@ -75,7 +75,7 @@ env:
     birdeye_wpt:
       handler: birdeye
       key: birdeye_wpt
-      shape: [64, 64, 3]
+      shape: [128, 128, 3]
       obs_range: 32
       ego_offset: 12
       # sight_fov = 150 equivalent to [150, 150] for [front, rear] FOV
@@ -92,6 +92,7 @@ env:
           waypoints,
           background_waypoints,
           ego_vehicle,
+          background_vehicles,
         ]
 
     # Render all information on BEV
@@ -160,12 +161,13 @@ env:
     enable: True
     render_keys: [camera, birdeye_wpt]
     image_size: 512
+    save_video: False
 
   action:
     discrete: True
     # Discrete control space. Use continuos_acc and continuous_steer if discrete is False
     discrete_acc: [-2.0, 0.0, 2.0] # discrete value of accelerations
-    discrete_steer: [-0.6, -0.3, -0.2, 0.1, 0.0, 0.1, 0.2, 0.3, 0.6] # discrete value of steering angles
+    discrete_steer: [-0.6, -0.2, 0.0, 0.2, 0.6] # discrete value of steering angles
     continuous_acc: [-3.0, 3.0] # continuous value of accelerations
     continuous_steer: [-1.0, 1.0] # continuous value of steering angles
     n_commands: 3 # number of text commands for message handler

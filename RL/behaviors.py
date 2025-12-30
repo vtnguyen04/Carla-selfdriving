@@ -3,7 +3,8 @@ from tensorflow_probability.substrates import jax as tfp
 
 tfd = tfp.distributions
 
-from . import agent, expl, jaxutils
+from .dreamerv3 import agent
+from . import expl, jaxutils
 from . import ninjax as nj
 
 

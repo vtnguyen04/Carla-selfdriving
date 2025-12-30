@@ -222,7 +222,7 @@ class MultiEncoder(nj.Module):
         mlp_keys=r".*",
         mlp_layers=4,
         mlp_units=512,
-        cnn="resnet",
+        cnn="resize",
         cnn_depth=48,
         cnn_blocks=2,
         resize="stride",
@@ -236,49 +236,23 @@ class MultiEncoder(nj.Module):
             for k, v in shapes.items()
             if (k not in excluded and not k.startswith("log_"))
         }
-
-        # Group CNN shapes by resolution
-        self.cnn_shapes = {}
-        for k, v in shapes.items():
-            if len(v) == 3 and re.match(cnn_keys, k):
-                resolution = tuple(v[:2])
-                if resolution not in self.cnn_shapes:
-                    self.cnn_shapes[resolution] = {}
-                self.cnn_shapes[resolution][k] = v
-
+        self.cnn_shapes = {
+            k: v for k, v in shapes.items() if (len(v) == 3 and re.match(cnn_keys, k))
+        }
         self.mlp_shapes = {
             k: v
             for k, v in shapes.items()
             if (len(v) in (1, 2) and re.match(mlp_keys, k))
         }
-        self.shapes = {
-            **{
-                k: v
-                for res_shapes in self.cnn_shapes.values()
-                for k, v in res_shapes.items()
-            },
-            **self.mlp_shapes,
-        }
-
-        print("Encoder CNN shapes grouped by resolution:", self.cnn_shapes)
+        self.shapes = {**self.cnn_shapes, **self.mlp_shapes}
+        print("Encoder CNN shapes:", self.cnn_shapes)
         print("Encoder MLP shapes:", self.mlp_shapes)
-
-        cnn_kw = {**kw, "minres": minres}
+        cnn_kw = {**kw, "minres": minres, "name": "cnn"}
         mlp_kw = {**kw, "symlog_inputs": symlog_inputs, "name": "mlp"}
-
-        self._cnns = {}
-        for resolution, res_shapes in self.cnn_shapes.items():
-            if cnn == "resnet":
-                self._cnns[resolution] = ImageEncoderResnet(
-                    cnn_depth,
-                    cnn_blocks,
-                    resize,
-                    **cnn_kw,
-                    name=f"cnn_{resolution[0]}x{resolution[1]}",
-                )
-            else:
-                raise NotImplementedError(cnn)
-
+        if cnn == "resnet":
+            self._cnn = ImageEncoderResnet(cnn_depth, cnn_blocks, resize, **cnn_kw)
+        else:
+            raise NotImplementedError(cnn)
         if self.mlp_shapes:
             self._mlp = MLP(None, mlp_layers, mlp_units, dist="none", **mlp_kw)
 
@@ -289,14 +263,11 @@ class MultiEncoder(nj.Module):
             k: v.reshape((-1,) + v.shape[len(batch_dims) :]) for k, v in data.items()
         }
         outputs = []
-
-        for resolution, cnn_instance in self._cnns.items():
-            res_shapes = self.cnn_shapes[resolution]
-            inputs = jnp.concatenate([data[k] for k in res_shapes], -1)
-            output = cnn_instance(inputs)
+        if self.cnn_shapes:
+            inputs = jnp.concatenate([data[k] for k in self.cnn_shapes], -1)
+            output = self._cnn(inputs)
             output = output.reshape((output.shape[0], -1))
             outputs.append(output)
-
         if self.mlp_shapes:
             inputs = [
                 data[k][..., None] if len(self.shapes[k]) == 0 else data[k]
@@ -305,7 +276,6 @@ class MultiEncoder(nj.Module):
             inputs = jnp.concatenate([x.astype(f32) for x in inputs], -1)
             inputs = jaxutils.cast_to_compute(inputs)
             outputs.append(self._mlp(inputs))
-
         outputs = jnp.concatenate(outputs, -1)
         outputs = outputs.reshape(batch_dims + outputs.shape[1:])
         return outputs
@@ -320,7 +290,7 @@ class MultiDecoder(nj.Module):
         mlp_keys=r".*",
         mlp_layers=4,
         mlp_units=512,
-        cnn="resnet",
+        cnn="resize",
         cnn_depth=48,
         cnn_blocks=2,
         image_dist="mse",
@@ -334,53 +304,27 @@ class MultiDecoder(nj.Module):
     ):
         excluded = ("is_first", "is_last", "is_terminal", "reward")
         shapes = {k: v for k, v in shapes.items() if k not in excluded}
-
-        # Group CNN shapes by resolution
-        self.cnn_shapes = {}
-        for k, v in shapes.items():
-            if len(v) == 3 and re.match(cnn_keys, k):
-                resolution = tuple(v[:2])
-                if resolution not in self.cnn_shapes:
-                    self.cnn_shapes[resolution] = {}
-                self.cnn_shapes[resolution][k] = v
-
+        self.cnn_shapes = {
+            k: v for k, v in shapes.items() if re.match(cnn_keys, k) and len(v) == 3
+        }
         self.mlp_shapes = {
             k: v for k, v in shapes.items() if re.match(mlp_keys, k) and len(v) == 1
         }
-        self.shapes = {
-            **{
-                k: v
-                for res_shapes in self.cnn_shapes.values()
-                for k, v in res_shapes.items()
-            },
-            **self.mlp_shapes,
-        }
-
-        print("Decoder CNN shapes grouped by resolution:", self.cnn_shapes)
+        self.shapes = {**self.cnn_shapes, **self.mlp_shapes}
+        print("Decoder CNN shapes:", self.cnn_shapes)
         print("Decoder MLP shapes:", self.mlp_shapes)
-
         cnn_kw = {**kw, "minres": minres, "sigmoid": cnn_sigmoid}
         mlp_kw = {**kw, "dist": vector_dist, "outscale": outscale, "bins": bins}
-
-        self._cnns = {}
-        for resolution, res_shapes in self.cnn_shapes.items():
-            # All shapes in a resolution group must have the same spatial dimensions
-            shape_list = list(res_shapes.values())
-            spatial_shape = shape_list[0][:-1]
-            total_channels = sum(x[-1] for x in shape_list)
-            output_shape = spatial_shape + (total_channels,)
+        if self.cnn_shapes:
+            shapes = list(self.cnn_shapes.values())
+            assert all(x[:-1] == shapes[0][:-1] for x in shapes)
+            shape = shapes[0][:-1] + (sum(x[-1] for x in shapes),)
             if cnn == "resnet":
-                self._cnns[resolution] = ImageDecoderResnet(
-                    output_shape,
-                    cnn_depth,
-                    cnn_blocks,
-                    resize,
-                    **cnn_kw,
-                    name=f"cnn_{resolution[0]}x{resolution[1]}",
+                self._cnn = ImageDecoderResnet(
+                    shape, cnn_depth, cnn_blocks, resize, **cnn_kw, name="cnn"
                 )
             else:
                 raise NotImplementedError(cnn)
-
         if self.mlp_shapes:
             self._mlp = MLP(
                 self.mlp_shapes, mlp_layers, mlp_units, **mlp_kw, name="mlp"
@@ -391,29 +335,21 @@ class MultiDecoder(nj.Module):
     def __call__(self, inputs, drop_loss_indices=None):
         features = self._inputs(inputs)
         dists = {}
-
         if self.cnn_shapes:
             feat = features
             if drop_loss_indices is not None:
                 feat = feat[:, drop_loss_indices]
             flat = feat.reshape([-1, feat.shape[-1]])
-
-            for resolution, cnn_instance in self._cnns.items():
-                res_shapes = self.cnn_shapes[resolution]
-                output = cnn_instance(flat)
-                output = output.reshape(feat.shape[:-1] + output.shape[1:])
-
-                res_shape_list = list(res_shapes.values())
-                split_indices = np.cumsum([v[-1] for v in res_shape_list[:-1]])
-                means = jnp.split(output, split_indices, -1)
-
-                dists.update(
-                    {
-                        key: self._make_image_dist(key, mean)
-                        for (key, shape), mean in zip(res_shapes.items(), means)
-                    }
-                )
-
+            output = self._cnn(flat)
+            output = output.reshape(feat.shape[:-1] + output.shape[1:])
+            split_indices = np.cumsum([v[-1] for v in self.cnn_shapes.values()][:-1])
+            means = jnp.split(output, split_indices, -1)
+            dists.update(
+                {
+                    key: self._make_image_dist(key, mean)
+                    for (key, shape), mean in zip(self.cnn_shapes.items(), means)
+                }
+            )
         if self.mlp_shapes:
             dists.update(self._mlp(features))
         return dists

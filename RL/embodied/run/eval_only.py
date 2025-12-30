@@ -3,7 +3,7 @@ import re
 
 import embodied
 import numpy as np
-from jax import tree_map
+from jax.tree_util import tree_map
 from car_dreamer.toolkit.utils import get_logger
 
 log = get_logger(log_dir=".", job_name="eval_only")

@@ -1,24 +1,20 @@
 carla_wpt:
   &carla_wpt # It's a base configuration for wpt tasks, don't use it directly
   reward:
-    desired_speed: 4 # desired speed (m/s)
+    desired_speed: 3.0 # desired speed (m/s)
     scales:
       {
-        waypoint: 2.0,
-        speed: 3.0,
+        waypoint: 5,
+        speed: 0.5,
         collision: 30.0,
-        out_of_lane: 10.0,
-        time: 1,
+        out_of_lane: 3.0,
+        time: 0.2,
         destination_reached: 20.0,
-        smoothness: 1.5,
+        smoothness: 1,
       }
   terminal:
-    time_limit: 2000 # maximum timesteps per episode
-    out_lane_thres: 3 # threshold for out of lane
-  gps_simulation:
-    enable: False
-    delay_steps: 2 # number of steps to delay the GPS pose
-    simple_ego_representation: True # render ego as a dot instead of a box
+    time_limit: 3300 # maximum timesteps per episode
+    out_lane_thres: 3.5 # threshold for out of lane
 
 carla_navigation:
   env:
@@ -27,7 +23,7 @@ carla_navigation:
       tm_port: 8008
       town: Town03
     observation.enabled: [camera, collision, birdeye_wpt]
-    num_vehicles: 30
+    num_vehicles: 5
     <<: *carla_wpt
     success_dist: 1000.0
     display:
@@ -38,9 +34,56 @@ carla_navigation:
     encoder:
       cnn_keys: "(camera|birdeye_wpt)"
     decoder:
+      cnn_keys: "(camera)"
+    run:
+      log_keys_video: [camera, birdeye_wpt]
+  tdmpc2:
+    encoder:
+      cnn_keys: "birdeye_wpt"
+
+carla_navigation_hard:
+  env:
+    name: CarlaNavigationHardEnv-v0
+    world:
+      tm_port: 8008
+      town: Town03
+    observation.enabled: [camera, collision, birdeye_wpt]
+    num_vehicles: 60
+    <<: *carla_wpt
+    # Lộ trình vòng quanh Town03 cực dài
+    lane_start_point: [-33.8, -135.1, 0.5, 0.0]
+    ego_path:
+      [
+        [-33.8, -135.1, 0.5],
+        [-5.0, -110.3, 0.5],
+        [6.0, -101.0, 0.5],
+        [-26.5, -139.0, 0.5],
+        [-52.6, 1.0, 0.5],
+        [-23.0, 7.5, 0.5],
+        [13.3, -13.2, 0.5],
+        [4.2, -43.2, 0.5],
+        [4.2, -150.0, 0.5],
+      ]
+    # Sử dụng road waypoints cho tất cả các đoạn để CARLA tự tìm đường đi hợp lệ
+    use_road_waypoints: [True, True, True, True, True, True, True, True]
+    success_dist: 2000.0
+    terminal:
+      time_limit: 8000
+      out_lane_thres: 5
+    display:
+      enable: False
+      use_local_window: False
+      render_keys: [camera_display, birdeye_wpt]
+  dreamerv3:
+    encoder:
+      cnn_keys: "birdeye_wpt"
+    decoder:
       cnn_keys: "camera"
     run:
       log_keys_video: [camera, birdeye_wpt]
+  tdmpc2:
+    encoder:
+      cnn_keys: "birdeye_wpt"
 
 carla_four_lane:
   env:
@@ -64,6 +107,8 @@ carla_four_lane:
     decoder.cnn_keys: "birdeye_wpt"
     run.log_keys_video: [camera, birdeye_wpt]
     run.log_keys_max: "collision"
+  tdmpc2:
+    encoder.cnn_keys: "birdeye_wpt"
 
 carla_overtake:
   env:
@@ -81,7 +126,7 @@ carla_overtake:
     swing_trigger_dist: 20 # The distance between ego and background vehicle that triggers swing.
     pid_coeffs: [0.03, 0.0, 0.03] # The PID controller parameter for background vehicle lane keeping.
     reward:
-      desired_speed: 5 # desired speed (m/s)
+      desired_speed: 3.0 # desired speed (m/s)
       reward_overtake_dist: 8 # The distance that triggers overtake reward.
       early_lane_change_dist: 10 # The distance that penalizes early lane change.
       lane_width: 3.4
@@ -115,6 +160,8 @@ carla_overtake:
     encoder.cnn_keys: "birdeye_wpt"
     decoder.cnn_keys: "birdeye_wpt"
     run.log_keys_video: [birdeye_wpt]
+  tdmpc2:
+    encoder.cnn_keys: "birdeye_wpt"
 
 
 carla_right_turn_simple: &carla_right_turn_simple
@@ -132,9 +179,11 @@ carla_right_turn_simple: &carla_right_turn_simple
     flow_spawn_point: [-3.4, -151.2, 0.1, 90.0]
 
   dreamerv3:
-    encoder.cnn_keys: "birdeye_wpt"
-    decoder.cnn_keys: "birdeye_wpt"
+    encoder.cnn_keys: "(camera|birdeye_wpt)"
+    decoder.cnn_keys: "camera"
     run.log_keys_video: [camera, birdeye_wpt]
+  tdmpc2:
+    encoder.cnn_keys: "birdeye_wpt"
 
 carla_right_turn_medium:
   <<: *carla_right_turn_simple
@@ -173,6 +222,8 @@ carla_right_turn_random:
     encoder.cnn_keys: "birdeye_wpt"
     decoder.cnn_keys: "birdeye_wpt"
     run.log_keys_video: [camera, birdeye_wpt]
+  tdmpc2:
+    encoder.cnn_keys: "birdeye_wpt"
 
 carla_left_turn_simple: &carla_left_turn_simple
   env:
@@ -195,6 +246,8 @@ carla_left_turn_simple: &carla_left_turn_simple
     encoder.cnn_keys: "birdeye_wpt"
     decoder.cnn_keys: "birdeye_wpt"
     run.log_keys_video: [camera, birdeye_wpt]
+  tdmpc2:
+    encoder.cnn_keys: "birdeye_wpt"
 
 carla_left_turn_medium:
   <<: *carla_left_turn_simple
@@ -234,6 +287,8 @@ carla_roundabout:
     encoder.cnn_keys: "birdeye_wpt"
     decoder.cnn_keys: "birdeye_wpt"
     run.log_keys_video: [camera, birdeye_wpt]
+  tdmpc2:
+    encoder.cnn_keys: "birdeye_wpt"
 
 carla_lane_merge:
   env:
@@ -243,7 +298,7 @@ carla_lane_merge:
     name: CarlaLaneMergeEnv-v0
     observation.enabled: [camera, collision, birdeye_wpt]
     <<: *carla_wpt
-    reward.desired_speed: 6 # desired speed (m/s)
+    reward.desired_speed: 3.0 # desired speed (m/s)
     lane_start_point: [49.4, 141.4, 0.5, -155.0]
     ego_path: [[49.4, 141.4, 0.5], [15.4, 56.0, 0.1]]
     use_road_waypoints: [True, False]
@@ -255,6 +310,8 @@ carla_lane_merge:
     encoder.cnn_keys: "birdeye_wpt"
     decoder.cnn_keys: "birdeye_wpt"
     run.log_keys_video: [camera, birdeye_wpt]
+  tdmpc2:
+    encoder.cnn_keys: "birdeye_wpt"
 
 carla_traffic_lights:
   env:
@@ -266,7 +323,7 @@ carla_traffic_lights:
     observation.enabled: [camera, collision, birdeye_with_traffic_lights]
     observation.birdeye_with_traffic_lights.obs_range: 64
     reward:
-      desired_speed: 4
+      desired_speed: 3.0
       scales:
         waypoint: 2.0
         speed: 0.5
@@ -305,6 +362,8 @@ carla_traffic_lights:
     encoder.cnn_keys: "birdeye_with_traffic_lights"
     decoder.cnn_keys: "birdeye_with_traffic_lights"
     run.log_keys_video: [camera, birdeye_with_traffic_lights]
+  tdmpc2:
+    encoder.cnn_keys: "birdeye_with_traffic_lights"
 
 carla_stop_sign:
   env:
@@ -316,7 +375,7 @@ carla_stop_sign:
     observation.enabled: [camera, collision, birdeye_with_traffic_lights]
     observation.birdeye_with_traffic_lights.obs_range: 64
     reward:
-      desired_speed: 4
+      desired_speed: 2.0
       scales:
         waypoint: 2.0
         speed: 0.5
@@ -345,6 +404,8 @@ carla_stop_sign:
     encoder.cnn_keys: "birdeye_with_traffic_lights"
     decoder.cnn_keys: "birdeye_with_traffic_lights"
     run.log_keys_video: [camera, birdeye_with_traffic_lights]
+  tdmpc2:
+    encoder.cnn_keys: "birdeye_with_traffic_lights"
 
 carla_follow:
   env:
@@ -357,7 +418,7 @@ carla_follow:
     <<: *carla_wpt
     pid_coeffs: [0.03, 0.0, 0.0]
     reward:
-      desired_speed: 4
+      desired_speed: 2.0
       scales: {
         waypoint: 0.0,
         speed: 0.0,
@@ -398,6 +459,8 @@ carla_follow:
     encoder.cnn_keys: "birdeye_wpt"
     decoder.cnn_keys: "birdeye_wpt"
     run.log_keys_video: [birdeye_wpt]
+  tdmpc2:
+    encoder.cnn_keys: "birdeye_wpt"
 
 carla_complex_nav:
   env:
@@ -422,6 +485,8 @@ carla_complex_nav:
     encoder.cnn_keys: "birdeye_wpt"
     decoder.cnn_keys: "birdeye_wpt"
     run.log_keys_video: [camera, birdeye_wpt]
+  tdmpc2:
+    encoder.cnn_keys: "birdeye_wpt"
 
 carla_navigation_local:
   env:
@@ -435,8 +500,55 @@ carla_navigation_local:
       use_local_window: True
   dreamerv3:
     encoder:
-      cnn_keys: "(camera|birdeye_wpt)"
+      cnn_keys: "(birdeye_wpt)"
     decoder:
       cnn_keys: "birdeye_wpt"
     run:
       log_keys_video: [camera, birdeye_wpt]
+  tdmpc2:
+    encoder:
+      cnn_keys: "(camera|birdeye_wpt)"
+
+carla_navigation_hard:
+  env:
+    name: CarlaNavigationHardEnv-v0
+    world:
+      tm_port: 8008
+      town: Town03
+    observation.enabled: [camera, collision, birdeye_wpt]
+    num_vehicles: 60
+    <<: *carla_wpt
+    # Lộ trình vòng quanh Town03 cực dài
+    lane_start_point: [-33.8, -135.1, 0.5, 0.0]
+    ego_path:
+      [
+        [-33.8, -135.1, 0.5],
+        [-5.0, -110.3, 0.5],
+        [6.0, -101.0, 0.5],
+        [-26.5, -139.0, 0.5],
+        [-52.6, 1.0, 0.5],
+        [-23.0, 7.5, 0.5],
+        [13.3, -13.2, 0.5],
+        [4.2, -43.2, 0.5],
+        [4.2, -150.0, 0.5],
+      ]
+    # Sử dụng road waypoints cho tất cả các đoạn để CARLA tự tìm đường đi hợp lệ
+    use_road_waypoints: [True, True, True, True, True, True, True, True]
+    success_dist: 2000.0
+    terminal:
+      time_limit: 8000
+      out_lane_thres: 5
+    display:
+      enable: False
+      use_local_window: False
+      render_keys: [camera_display, birdeye_wpt]
+  dreamerv3:
+    encoder:
+      cnn_keys: "birdeye_wpt"
+    decoder:
+      cnn_keys: "camera"
+    run:
+      log_keys_video: [camera, birdeye_wpt]
+  tdmpc2:
+    encoder:
+      cnn_keys: "birdeye_wpt"

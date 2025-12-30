@@ -70,6 +70,8 @@ class JAXAgent(embodied.Agent):
         rng = self._next_rngs(self.train_devices)
         if state is None:
             state, self.varibs = self._init_train(self.varibs, rng, data["is_first"])
+        else:
+            state = self._convert_inps(state, self.train_devices)
         (outs, state, mets), self.varibs = self._train(self.varibs, rng, data, state)
         outs = self._convert_outs(outs, self.train_devices)
         self._updates.increment()
@@ -148,7 +150,7 @@ class JAXAgent(embodied.Agent):
         jax.config.update("jax_platform_name", self.config.platform)
         jax.config.update("jax_disable_jit", not self.config.jit)
         jax.config.update("jax_debug_nans", self.config.debug_nans)
-        jax.config.update("jax_transfer_guard", "disallow")
+        jax.config.update("jax_transfer_guard", "log")
         if self.config.platform == "cpu":
             jax.config.update("jax_disable_most_optimizations", self.config.debug)
         jaxutils.COMPUTE_DTYPE = getattr(jnp, self.config.precision)

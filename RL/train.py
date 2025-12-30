@@ -1,5 +1,11 @@
 import datetime
+import pathlib
+import sys
 import warnings
+
+# Add project root to path
+root = pathlib.Path(__file__).parent.parent
+sys.path.append(str(root))
 
 import embodied
 import ruamel.yaml as yaml
@@ -37,26 +43,50 @@ def wrap_env(env, config):
 
 
 def main(argv=None):
-    model_configs = yaml.YAML(typ="safe").load(
-        (embodied.Path(__file__).parent / "dreamerv3.yaml").read()
-    )
-    temp_parsed, temp_other = embodied.Flags(model_size="small").parse_known(argv)
+    # Initial argument parsing to determine method and model size
+    temp_flags = embodied.Flags(method="dreamerv3", model_size="small")
+    temp_parsed, temp_other = temp_flags.parse_known(argv)
+    method = temp_parsed.method
     model_size = temp_parsed.model_size
+
+    # Load configuration based on method
+    if method == "dreamerv3":
+        config_path = embodied.Path(__file__).parent / "dreamerv3/dreamerv3.yaml"
+    elif method == "tdmpc2":
+        config_path = embodied.Path(__file__).parent / "tdmpc2/tdmpc2.yaml"
+    else:
+        raise ValueError(f"Unknown method: {method}")
+
+    model_configs = yaml.YAML(typ="safe").load(config_path.read())
+    
     if model_size not in model_configs:
         raise ValueError(f"Unknown model_size: {model_size}. Available: {list(model_configs.keys())}")
 
-    config = embodied.Config({"dreamerv3": model_configs["defaults"]})
-    config = config.update({"dreamerv3": model_configs[model_size]})
+    # Initialize Config
+    # DreamerV3 config structure uses a root key (e.g., 'dreamerv3')
+    # TD-MPC2 config might be flat or use a different key. 
+    # Assuming standard structure: defaults updated by size.
+    config = embodied.Config({method: model_configs["defaults"]})
+    config = config.update({method: model_configs[model_size]})
 
     parsed, other = embodied.Flags(task=["carla_navigation"]).parse_known(temp_other)
     for name in parsed.task:
         log.info(f"Using task: {name}")
         env, env_config = car_dreamer.create_task(name, other)
         config = config.update(env_config)
+    
+    # Filter arguments to prevent mismatch errors
+    if method == "tdmpc2":
+        other = [arg for arg in other if not arg.startswith("--dreamerv3.")]
+    elif method == "dreamerv3":
+        other = [arg for arg in other if not arg.startswith("--tdmpc2.")]
+
     config = embodied.Flags(config).parse(other)
     log.info(config)
 
-    logdir = embodied.Path(config.dreamerv3.logdir)
+    # Logdir setup
+    method_config = config[method]
+    logdir = embodied.Path(method_config.logdir)
     step = embodied.Counter()
     logger = embodied.Logger(
         step,
@@ -69,9 +99,8 @@ def main(argv=None):
 
     from embodied.envs import from_gym
 
-    dreamerv3_config = config.dreamerv3
     env = from_gym.FromGym(env)
-    env = wrap_env(env, dreamerv3_config)
+    env = wrap_env(env, method_config)
     env = embodied.BatchEnv([env], parallel=False)
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -79,15 +108,20 @@ def main(argv=None):
     config.save(str(logdir / config_filename))
     log.info(f"[Train] Config saved to {logdir / config_filename}")
 
-    agent = RL.Agent(env.obs_space, env.act_space, step, dreamerv3_config)
+    # Instantiate Agent
+    if method == "dreamerv3":
+        agent = RL.Agent(env.obs_space, env.act_space, step, method_config)
+    elif method == "tdmpc2":
+        agent = RL.TDMPC2Agent(env.obs_space, env.act_space, step, method_config)
+
     replay = embodied.replay.Uniform(
-        dreamerv3_config.batch_length, dreamerv3_config.replay_size, logdir / "replay"
+        method_config.batch_length, method_config.replay_size, logdir / "replay"
     )
     args = embodied.Config(
-        **dreamerv3_config.run,
-        logdir=dreamerv3_config.logdir,
-        batch_steps=dreamerv3_config.batch_size * dreamerv3_config.batch_length,
-        actor_dist_disc=dreamerv3_config.actor_dist_disc,
+        **method_config.run,
+        logdir=method_config.logdir,
+        batch_steps=method_config.batch_size * method_config.batch_length,
+        actor_dist_disc=method_config.get("actor_dist_disc", "onehot"), # Handle generic keys
     )
     embodied.run.train(agent, env, replay, logger, args)
 
