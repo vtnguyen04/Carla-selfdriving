@@ -18,12 +18,10 @@ conda create python=3.10 --name self_driving
 conda activate self_driving
 pip install flit
 flit install --symlink
-```
 
-```bash
-conda install -c "nvidia/label/cuda-11.8.0" cuda-toolkit
 pip install -r requirements.txt
-pip install "jax[cuda12_pip]==0.4.34" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+conda install -c "nvidia/label/cuda-12.5.0" cuda-toolkit
+pip install "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
 ```
 
