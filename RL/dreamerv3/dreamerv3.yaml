@@ -55,8 +55,8 @@ defaults:
   # Agent
   task_behavior: Greedy
   expl_behavior: Explore
-  batch_size: 8
-  batch_length: 32
+  batch_size: 16
+  batch_length: 64
   data_loaders: 20
 
   # World Model
