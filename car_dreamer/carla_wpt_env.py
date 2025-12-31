@@ -53,6 +53,8 @@ class CarlaWptEnv(CarlaBaseEnv):
     
     def reset(self):
         obs = super().reset()
+        if hasattr(self, 'prev_wpt_dist'):
+            del self.prev_wpt_dist
         if hasattr(self._config, 'gps_simulation') and self._config.gps_simulation.enable:
             self._pose_buffer = collections.deque(maxlen=self._config.gps_simulation.delay_steps + 1)
             initial_pose = {
@@ -112,10 +114,12 @@ class CarlaWptEnv(CarlaBaseEnv):
         ego_velocity = np.array([*get_vehicle_velocity(ego)])
         speed_norm = np.linalg.norm(ego_velocity)
 
-        # Reward for reaching waypoints
-        r_waypoints = 0.0
-        if self.num_completed > 0:
-            r_waypoints = reward_scales["waypoint"]
+        # Dense reward for getting closer to the next waypoint
+        current_wpt_dist = self.get_wpt_dist(ego_location)
+        # On the first step, prev_wpt_dist doesn't exist, so the reward is 0
+        r_waypoints = (getattr(self, 'prev_wpt_dist', current_wpt_dist) - current_wpt_dist) * reward_scales["waypoint"]
+        self.prev_wpt_dist = current_wpt_dist
+
 
         # Reward for speed
         r_speed = 0.0
@@ -142,6 +146,11 @@ class CarlaWptEnv(CarlaBaseEnv):
             speed_parallel = np.dot(ego_velocity, waypoint_direction)
             speed_perpendicular = np.abs(np.dot(ego_velocity, perp_direction))
             r_speed = (desired_speed - np.abs(speed_parallel - desired_speed) - 2 * min(speed_perpendicular, 0.5)) * reward_scales["speed"]
+
+        # Penalty for standing still
+        r_standstill = 0.0
+        if speed_norm < 0.1: # Threshold for being "still"
+            r_standstill = -reward_scales.get("standstill", 0.0)
 
         # Reward for collision
         r_collision = 0.0
@@ -174,7 +183,7 @@ class CarlaWptEnv(CarlaBaseEnv):
             r_smoothness = -reward_scales.get("smoothness", 0.0) * (steer_diff**2)
 
         # Total reward
-        total_reward = r_waypoints + r_speed + r_collision + r_out_of_lane + r_destination + time_penalty + r_smoothness
+        total_reward = r_waypoints + r_speed + r_collision + r_out_of_lane + r_destination + time_penalty + r_smoothness + r_standstill
 
         ttc = TTCCalculator.get_ttc(ego, self._world.carla_world, self._world.carla_map)
 
@@ -193,6 +202,7 @@ class CarlaWptEnv(CarlaBaseEnv):
             "r_speed": r_speed,
             "r_collision": r_collision,
             "r_out_of_lane": r_out_of_lane,
+            "r_standstill": r_standstill,
             "r_smoothness": r_smoothness,
             "ttc": ttc,
             "throttle": vehicle_control.throttle,

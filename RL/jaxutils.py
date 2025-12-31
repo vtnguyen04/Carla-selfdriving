@@ -381,15 +381,30 @@ class Optimizer(nj.Module):
         eps=1e-5,
         clip=100.0,
         warmup=0,
+        decay_steps=0,
+        min_lr=0.0,
         wd=0.0,
         wd_pattern=r"/(w|kernel)$",
         lateclip=0.0,
     ):
         assert opt in ("adam", "belief", "yogi")
         assert wd_pattern[0] not in ("0", "1")
-        # assert self.path not in self.PARAM_COUNTS
         self.PARAM_COUNTS[self.path] = None
         wd_pattern = re.compile(wd_pattern)
+
+        # Learning Rate Schedule
+        if decay_steps > 0:
+            self.schedule = optax.warmup_cosine_decay_schedule(
+                init_value=0.0,
+                peak_value=lr,
+                warmup_steps=warmup,
+                decay_steps=decay_steps,
+                end_value=min_lr,
+            )
+        else:
+            self.schedule = lambda step: lr  # Constant LR
+
+        # Optimizer Chain
         chain = []
         if clip:
             chain.append(optax.clip_by_global_norm(clip))
@@ -410,11 +425,10 @@ class Optimizer(nj.Module):
                     ),
                 )
             )
-        if warmup:
-            schedule = optax.linear_schedule(0.0, -lr, warmup)
-            chain.append(optax.inject_hyperparams(optax.scale)(schedule))
-        else:
-            chain.append(optax.scale(-lr))
+        
+        chain.append(optax.scale(-1.0))
+        chain.append(optax.scale_by_schedule(self.schedule))
+
         self.opt = optax.chain(*chain)
         self.step = nj.Variable(jnp.array, 0, jnp.int32, name="step")
         self.scaling = COMPUTE_DTYPE == jnp.float16
@@ -475,10 +489,12 @@ class Optimizer(nj.Module):
         norm = optax.global_norm(grads)
         if self.scaling:
             norm = jnp.where(jnp.isfinite(norm), norm, jnp.nan)
-        self.step.write(self.step.read() + jnp.isfinite(norm).astype(jnp.int32))
+        step = self.step.read()
+        self.step.write(step + jnp.isfinite(norm).astype(jnp.int32))
         metrics["loss"] = loss.mean()
         metrics["grad_norm"] = norm
         metrics["grad_steps"] = self.step.read()
+        metrics["lr"] = self.schedule(step)
         metrics = {f"{self.name}_{k}": v for k, v in metrics.items()}
         return (metrics, aux) if has_aux else metrics
 

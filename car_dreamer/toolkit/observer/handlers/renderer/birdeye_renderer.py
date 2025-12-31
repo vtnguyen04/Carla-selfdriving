@@ -421,19 +421,6 @@ class BirdeyeRenderer:
         self, surface: np.ndarray, vehicle_polygon: ActorPolygon, color: Color
     ):
         """Render a list of polygons on the surface."""
-        actor_corners = np.array(
-            [
-                self._world_to_pixel(carla.Location(x=p[0], y=p[1]))
-                for p in vehicle_polygon
-            ],
-            dtype=np.int32,
-        )
-        cv2.fillPoly(surface, [actor_corners], color)
-
-    def _render_polygon(
-        self, surface: np.ndarray, vehicle_polygon: ActorPolygon, color: Color
-    ):
-        """Render a list of polygons on the surface."""
         # Scale the polygon down to make it smaller
         poly_array = np.array(vehicle_polygon)
         centroid = np.mean(poly_array, axis=0)

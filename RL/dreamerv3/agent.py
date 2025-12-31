@@ -102,6 +102,8 @@ class Agent(nj.Module):
         # Don't need the full model_loss_raw or td_error after the priority calculation, summarize it.
         metrics.update({"model_loss_raw": metrics["model_loss_raw"].mean()})
         metrics.update({"td_error": metrics["td_error"].mean()})
+        if 'expl_td_error' in metrics:
+            metrics.update({"expl_td_error": metrics["expl_td_error"].mean()})
 
         return outs, state, metrics
 

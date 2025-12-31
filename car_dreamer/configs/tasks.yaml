@@ -3,18 +3,17 @@ carla_wpt:
   reward:
     desired_speed: 3.0 # desired speed (m/s)
     scales:
-      {
-        waypoint: 5,
-        speed: 0.5,
-        collision: 30.0,
-        out_of_lane: 3.0,
-        time: 0.2,
-        destination_reached: 20.0,
-        smoothness: 1,
-      }
+      waypoint: 10
+      speed: 2.0
+      collision: 30.0
+      out_of_lane: 10.0
+      time: 2.0
+      standstill: 1.0
+      destination_reached: 20.0
+      smoothness: 1
   terminal:
     time_limit: 3300 # maximum timesteps per episode
-    out_lane_thres: 3.5 # threshold for out of lane
+    out_lane_thres: 5.0 # threshold for out of lane
 
 carla_navigation:
   env:

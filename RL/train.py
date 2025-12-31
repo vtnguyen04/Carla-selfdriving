@@ -91,7 +91,7 @@ def main(argv=None):
     logger = embodied.Logger(
         step,
         [
-            embodied.logger.TerminalOutput(pattern=r".*reward.*|.*return.*|.*loss.*"),
+            embodied.logger.TerminalOutput(pattern=r".*return$|.*_opt_loss$|.*_lr$"),
             embodied.logger.JSONLOutput(logdir, "metrics.jsonl"),
             embodied.logger.TensorBoardOutput(logdir),
         ],
