@@ -22,6 +22,8 @@ warnings.filterwarnings("ignore", ".*truncated to dtype int32.*")
 def wrap_env(env, config):
     args = config.wrapper
     env = embodied.wrappers.InfoWrapper(env)
+    if args.get("repeat", 1) > 1:
+        env = embodied.wrappers.ActionRepeat(env, args.repeat)
     for name, space in env.act_space.items():
         if name == "reset":
             continue

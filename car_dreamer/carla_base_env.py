@@ -16,7 +16,9 @@ class CarlaBaseEnv(gym.Env):
     def __init__(self, config):
         self._config = config
 
-        if self._config.display.get("save_video", False):
+        if self._config.display.get("no_monitor", False):
+            self._monitor = None
+        elif self._config.display.get("save_video", False):
             from .toolkit.monitor.monitor import EnvMonitorVideo
             self._monitor = EnvMonitorVideo(self._config)
         elif self._config.display.get("use_local_window", False):
@@ -184,4 +186,5 @@ class CarlaBaseEnv(gym.Env):
         return self.obs["collision"][0] > 0
 
     def _render(self, obs, info):
-        self._monitor.render(obs, info)
+        if self._monitor:
+            self._monitor.render(obs, info)

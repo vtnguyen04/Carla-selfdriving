@@ -54,7 +54,7 @@ defaults:
 
   # Agent
   task_behavior: Greedy
-  expl_behavior: Explore
+  expl_behavior: None
   batch_size: 16
   batch_length: 64
   data_loaders: 20
@@ -271,7 +271,7 @@ defaults:
 
 xsmall:
   rssm.deter: 512
-  .*\.cnn_depth: 16
+  .*\.cnn_depth: 8
   .*\.units: 512
   .*\.layers: 2
 

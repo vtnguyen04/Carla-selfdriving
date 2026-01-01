@@ -140,6 +140,7 @@ class EnvMonitorBase:
             host="0.0.0.0",
             port=self._config.world.carla_port + 7000,
             use_reloader=False,
+            debug=False,
         )
 
     def _render_info(self, info):

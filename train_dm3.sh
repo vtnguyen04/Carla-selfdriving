@@ -10,6 +10,7 @@ fi
 CARLA_PORT=$1
 GPU_DEVICE=$2
 TM_PORT=$((CARLA_PORT + 6001))
+MONITOR_PORT=$((CARLA_PORT + 7000))
 LOG_FILE="log_${CARLA_PORT}.log"
 CARLA_SERVER_COMMAND="$CARLA_ROOT/CarlaUE4.sh -RenderOffScreen -carla-port=$CARLA_PORT -benchmark -fps=10"
 TRAINING_SCRIPT="RL/train.py"
@@ -34,6 +35,7 @@ launch_carla() {
         # Kill any existing CARLA processes on the same port
         fuser -k ${CARLA_PORT}/tcp
         fuser -k ${TM_PORT}/tcp
+        fuser -k ${MONITOR_PORT}/tcp
         # Start CARLA
         CUDA_VISIBLE_DEVICES=$GPU_DEVICE $CARLA_SERVER_COMMAND &
         # Wait for CARLA to fully start
@@ -61,6 +63,7 @@ cleanup() {
     log_with_timestamp "Cleaning up and exiting..."
     fuser -k ${CARLA_PORT}/tcp
     fuser -k ${TM_PORT}/tcp
+    fuser -k ${MONITOR_PORT}/tcp
     # Kill the specific training process using its PID
     kill -TERM $TRAINING_PID >/dev/null 2>&1
     wait $TRAINING_PID >/dev/null 2>&1

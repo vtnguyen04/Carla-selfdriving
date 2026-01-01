@@ -16,7 +16,7 @@ EVAL_SCRIPT="RL/eval.py"
 COMMON_PARAMS="--method dreamerv3 --env.world.carla_port $CARLA_PORT --dreamerv3.jax.policy_devices $GPU_DEVICE --dreamerv3.run.from_checkpoint $CHECKPOINT_PATH"
 ADDITIONAL_PARAMS="${@:4}"  # Capture all additional parameters passed to the script
 export CUDA_VISIBLE_DEVICES=$GPU_DEVICE
-EVAL_COMMAND="python -u $EVAL_SCRIPT $COMMON_PARAMS $ADDITIONAL_PARAMS"
+EVAL_COMMAND="uv run $EVAL_SCRIPT $COMMON_PARAMS $ADDITIONAL_PARAMS"
 
 # Clear log file before starting
 > $LOG_FILE

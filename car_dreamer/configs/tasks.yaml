@@ -111,6 +111,9 @@ carla_four_lane:
 
 carla_overtake:
   env:
+    world:
+        tm_port: 8008
+        town: Town04
     name: CarlaOvertakeEnv-v0
     observation.enabled: [collision, camera, birdeye_wpt]
     nonego_spawn_points:
@@ -125,7 +128,7 @@ carla_overtake:
     swing_trigger_dist: 20 # The distance between ego and background vehicle that triggers swing.
     pid_coeffs: [0.03, 0.0, 0.03] # The PID controller parameter for background vehicle lane keeping.
     reward:
-      desired_speed: 3.0 # desired speed (m/s)
+      desired_speed: 5.0 # desired speed (m/s)
       reward_overtake_dist: 8 # The distance that triggers overtake reward.
       early_lane_change_dist: 10 # The distance that penalizes early lane change.
       lane_width: 3.4
@@ -151,12 +154,15 @@ carla_overtake:
       terminal_dist: 100 # terminate tasks
 
     display:
-      enable: True
-      use_local_window: True
+      enable: False
+      use_local_window: False
       render_keys: [camera_display, birdeye_wpt]
+      no_monitor: False
+    wrapper:
+      repeat: 2
 
   dreamerv3:
-    encoder.cnn_keys: "birdeye_wpt"
+    encoder.cnn_keys: "(birdeye_wpt)"
     decoder.cnn_keys: "birdeye_wpt"
     run.log_keys_video: [birdeye_wpt]
   tdmpc2:
