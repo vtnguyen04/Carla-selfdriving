@@ -6,30 +6,21 @@ cd Carla-selfdriving
 wget https://tiny.carla.org/carla-0-9-15-linux
 mkdir carla_simulate
 tar -xvzf carla-0-9-15-linux -C carla_simulate
-
-export CARLA_ROOT=/workspace/Carla-selfdriving/carla_simulate
-export PYTHONPATH="${CARLA_ROOT}/PythonAPI/carla":${PYTHONPATH}
 ```
-
-Cài đặt gói bằng flit. Cờ `--symlink` được dùng để tạo liên kết tượng trưng (symlink) tới gói trong môi trường Python, nên các thay đổi trong gói sẽ có hiệu lực ngay mà không cần cài lại. (`--pth-file` cũng hoạt động như một lựa chọn thay thế cho `--symlink`.)
-
+# Cài UV
 ```bash
-conda create python=3.10 --name self_driving
-conda activate self_driving
-pip install flit
-flit install --symlink
-
-pip install -r requirements.txt
-conda install -c "nvidia/label/cuda-12.5.0" cuda-toolkit
-pip install "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source $HOME/.cargo/env
+uv venv --python 3.10
+uv sync
 ```
-
 Thiết lập CARLA và biến môi trường:
 
 ```bash
-export CUDNN_PATH=$(dirname $(python -c "import nvidia.cudnn;print(nvidia.cudnn.__file__)"))
-export CUSOLVER_PATH=$(dirname $(python -c "import nvidia.cusolver;print(nvidia.cusolver.__file__)"))
+export CARLA_ROOT=/workspace/Carla-selfdriving/carla_simulate
+export PYTHONPATH="${CARLA_ROOT}/PythonAPI/carla":${PYTHONPATH}
+export CUDNN_PATH=$(dirname $(uv run python -c "import nvidia.cudnn;print(nvidia.cudnn.__file__)"))
+export CUSOLVER_PATH=$(dirname $(uv run python -c "import nvidia.cusolver;print(nvidia.cusolver.__file__)"))
 export LD_LIBRARY_PATH=$CUDNN_PATH/lib:$CUSOLVER_PATH/lib:$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
 ```
 

@@ -16,7 +16,7 @@ TRAINING_SCRIPT="RL/train.py"
 COMMON_PARAMS="--env.world.carla_port $CARLA_PORT --dreamerv3.jax.policy_devices $GPU_DEVICE --dreamerv3.jax.train_devices $GPU_DEVICE"
 ADDITIONAL_PARAMS="${@:3}"  # Capture all additional parameters passed to the script
 export CUDA_VISIBLE_DEVICES=$GPU_DEVICE
-TRAINING_COMMAND="PATH=/usr/bin:$PATH XLA_FLAGS=--xla_gpu_strict_conv_algorithm_picker=false python -u $TRAINING_SCRIPT $COMMON_PARAMS $ADDITIONAL_PARAMS"
+TRAINING_COMMAND="PATH=/usr/bin:$PATH XLA_FLAGS=--xla_gpu_strict_conv_algorithm_picker=false uv run $TRAINING_SCRIPT $COMMON_PARAMS $ADDITIONAL_PARAMS"
 
 # Clear log file before starting
 > $LOG_FILE
