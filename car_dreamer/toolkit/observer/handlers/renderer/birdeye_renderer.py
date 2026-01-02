@@ -377,7 +377,7 @@ class BirdeyeRenderer:
         actor_corners = np.array(
             [
                 self._world_to_pixel(carla.Location(x=p[0], y=p[1]))
-                for p in vehicle_polygon
+                for p in scaled_polygon
             ],
             dtype=np.int32,
         )
