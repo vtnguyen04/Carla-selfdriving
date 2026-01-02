@@ -25,14 +25,19 @@ class CarlaBaseEnv(gym.Env):
             self._monitor = EnvMonitorLocalCV(self._config)
         else:
             self._monitor = EnvMonitorOpenCV(self._config)
-        
+
         self._world = WorldManager(self._config)
         self._world.on_reset(self.on_reset)
         self._world.on_step(self.on_step)
-        self._observer = Observer(self._world, self._config.observation)
+        self._observer = Observer(self._world, self._config.observation, self._config.display)
 
         self.action_space = self._get_action_space()
         self.observation_space = self._get_observation_space()
+
+        # self._image_keys = []
+        # for key, space in self.observation_space.spaces.items():
+        #     if isinstance(space, spaces.Box) and len(space.shape) == 3 and space.dtype == np.uint8:
+        #         self._image_keys.append(key)
 
     @abstractmethod
     def on_reset(self) -> None:
@@ -112,6 +117,9 @@ class CarlaBaseEnv(gym.Env):
 
         log.info("[CARLA] Environment reset")
         self.obs, _ = self._observer.get_observation(self.get_state())
+        # for key in self._image_keys:
+        #     if key in self.obs:
+        #         self.obs[key] = self.obs[key].astype(np.float32) / 255.0
         self.prev_action = None
         self.current_action = None
         return self.obs
@@ -161,6 +169,9 @@ class CarlaBaseEnv(gym.Env):
         env_state = self.get_state()
         is_terminal, terminal_conds = self._is_terminal()
         self.obs, obs_info = self._observer.get_observation(env_state)
+        # for key in self._image_keys:
+        #     if key in self.obs:
+        #         self.obs[key] = self.obs[key].astype(np.float32) / 255.0
         reward, reward_info = self.reward()
 
         info = {

@@ -106,9 +106,9 @@ class CameraHandler(SensorHandler):
         }
         info = {}
 
-        # # Add the high-resolution image under a new key for display purposes
-        # if self._hires_data is not None:
-        #     obs[self._config.key + "_display"] = self._hires_data
+        # Add the high-resolution image to the info dict for display purposes
+        if self._hires_data is not None:
+            info[self._config.key + "_display"] = self._hires_data
 
         return obs, info
 

@@ -53,9 +53,9 @@ defaults:
   wrapper: { length: 0, reset: True, discretize: 0, checks: False }
 
   # Agent (TD-MPC2 Specific)
-  batch_size: 256
-  batch_length: 16  # TD-MPC2 usually samples single transitions or short chunks, but uses replay buffer differently. We will stick to 1 for simplified training logic initially or adjust in agent.
-  horizon: 5       # Planning horizon
+  batch_size: 8
+  batch_length: 64  # TD-MPC2 usually samples single t ransitions or shortchunks, but uses replay buffer differently. We will stick to 1 for simplified training logic initially or adjust in agent.
+  horizon: 15       # Planning horizon
   rho: 0.5         # MPPI Variance scaling (temperature)
   num_samples: 512 # MPPI samples
   iterations: 6    # MPPI iterations
@@ -63,15 +63,15 @@ defaults:
   mppi_temp: 0.1   # MPPI temperature
   discount: 0.99   # Discount factor
   expl_noise: 0.1  # Exploration noise
-  
+
   # Model Architecture
   latent_dim: 512
   enc_dim: 256
   mlp_dim: 512
-  
+
   # World Model (TOLD)
   grad_heads: [dynamics, reward, q]
-  
+
   encoder:
     {
       cnn_keys: "image",
@@ -89,7 +89,7 @@ defaults:
       symlog_inputs: True,
       minres: 4,
     }
-  
+
   dynamics:
     {
       layers: 2,
@@ -98,19 +98,19 @@ defaults:
       norm: layer,
       inputs: [tensor],
     }
-    
+
   reward_head:
     {
       layers: 2,
       units: 512,
       act: silu,
       norm: layer,
-      dist: symlog_disc, 
+      dist: symlog_disc,
       bins: 255,
       outscale: 0.0,
       inputs: [tensor],
     }
-    
+
   q_head:
     {
       layers: 2,
@@ -119,7 +119,7 @@ defaults:
       norm: layer,
       dist: symlog_disc,
       bins: 255,
-      outscale: 0.0, 
+      outscale: 0.0,
       inputs: [tensor],
     }
 
@@ -151,16 +151,16 @@ defaults:
       wd: 0.01,
       warmup: 0,
     }
-  
+
   target_ema_decay: 0.98
   target_ema_period: 1
-  
+
   consistency_loss_scale: 10.0
   reward_loss_scale: 1.0
   q_loss_scale: 1.0
   p_loss_scale: 1.0
   s_loss_scale: 0.1
-  
+
   # Replay Configuration
   replay_hyper:
     {
@@ -193,7 +193,7 @@ small:
   latent_dim: 256
   mlp_dim: 256
   num_samples: 128
-  
+
 medium:
   latent_dim: 512
   mlp_dim: 512

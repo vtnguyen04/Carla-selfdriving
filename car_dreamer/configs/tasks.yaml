@@ -1,7 +1,7 @@
 carla_wpt:
   &carla_wpt # It's a base configuration for wpt tasks, don't use it directly
   reward:
-    desired_speed: 3.0 # desired speed (m/s)
+    desired_speed: 3.5 # desired speed (m/s)
     scales:
       waypoint: 10
       speed: 2.0
@@ -162,8 +162,8 @@ carla_overtake:
       repeat: 2
 
   dreamerv3:
-    encoder.cnn_keys: "(birdeye_wpt)"
-    decoder.cnn_keys: "birdeye_wpt"
+    encoder.cnn_keys: "(camera|birdeye_wpt)"
+    decoder.cnn_keys: "camera"
     run.log_keys_video: [birdeye_wpt]
   tdmpc2:
     encoder.cnn_keys: "birdeye_wpt"
@@ -183,6 +183,13 @@ carla_right_turn_simple: &carla_right_turn_simple
     use_road_waypoints: [True, False]
     flow_spawn_point: [-3.4, -151.2, 0.1, 90.0]
 
+    display:
+        enable: False
+        use_local_window: False
+        render_keys: [camera_display, birdeye_wpt]
+        no_monitor: False
+    wrapper:
+      repeat: 2
   dreamerv3:
     encoder.cnn_keys: "(camera|birdeye_wpt)"
     decoder.cnn_keys: "camera"

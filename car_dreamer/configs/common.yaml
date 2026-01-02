@@ -15,7 +15,7 @@ env:
       handler: camera
       blueprint: sensor.camera.rgb
       key: camera
-      shape: [128, 128, 3]
+      shape: [64, 64, 3]
       transform:
         x: 1.5
         z: 2.0
@@ -75,7 +75,7 @@ env:
     birdeye_wpt:
       handler: birdeye
       key: birdeye_wpt
-      shape: [128, 128, 3]
+      shape: [64, 64, 3]
       obs_range: 32
       ego_offset: 12
       # sight_fov = 150 equivalent to [150, 150] for [front, rear] FOV
@@ -162,6 +162,7 @@ env:
     render_keys: [camera, birdeye_wpt]
     image_size: 512
     save_video: False
+    hires: False
 
   action:
     discrete: True

@@ -130,14 +130,14 @@ def main(argv=None):
     # Initial argument parsing
     if argv is None:
         argv = sys.argv[1:]
-    
+
     temp_flags = embodied.Flags(method="dreamerv3", model_size="small")
     temp_parsed, temp_other = temp_flags.parse_known(argv)
     method = temp_parsed.method
     model_size = temp_parsed.model_size
 
     log = get_logger(log_dir=".", job_name="main_eval")
-    
+
     # Load configuration based on method
     if method == "dreamerv3":
         config_path = embodied.Path(__file__).parent / "dreamerv3/dreamerv3.yaml"
@@ -147,7 +147,7 @@ def main(argv=None):
         raise ValueError(f"Unknown method: {method}")
 
     model_configs = yaml.YAML(typ="safe").load(config_path.read())
-    
+
     if model_size not in model_configs:
         raise ValueError(f"Unknown model_size: {model_size}. Available: {list(model_configs.keys())}")
 
@@ -155,34 +155,52 @@ def main(argv=None):
     config = embodied.Config({method: model_configs["defaults"]})
     config = config.update({method: model_configs[model_size]})
 
-    # Parse task early to load environment configs
-    pre_parsed, other_argv = embodied.Flags(
+    # --- Config and Environment Setup ---
+
+    # Parse task name early.
+    pre_parsed, other = embodied.Flags(
         task=["carla_navigation"]
     ).parse_known(temp_other)
 
     task_name = pre_parsed.task[0]
     log.info(f"Using task: {task_name}")
-    env_config = car_dreamer.load_task_configs(task_name)
+
+    # If --hires is used, we must inject the video-saving flags into the arguments
+    # BEFORE create_task is called, because create_task is what builds the env.
+    if "--hires" in other:
+        log.info("Hires mode: Injecting video-saving flags for create_task.")
+        video_flags = [
+            "--env.display.enable=True",
+            "--env.display.save_video=True",
+            "--env.display.hires=True",
+        ]
+        other = video_flags + other
+
+    # Create the environment using the method from the training script.
+    # It will now see the injected video flags if --hires was present.
+    env, env_config = car_dreamer.create_task(task_name, other)
     config = config.update(env_config)
 
-    # Load and merge hires config if requested
-    if "--hires" in other_argv:
-        log.info("High-resolution mode requested. Loading eval_hires.yaml.")
+    # Load and merge the full hires config for the rest of the script (agent, logger).
+    # The original --hires flag is still in `other` to trigger this.
+    if "--hires" in other:
+        log.info("High-resolution mode: Loading full hires config for agent/logger.")
         hires_path = embodied.Path(__file__).parent / "eval_hires.yaml"
         hires_config = yaml.YAML(typ="safe").load(hires_path.read())
         config = config.update(hires_config)
-        other_argv = [arg for arg in other_argv if arg != "--hires"]
+        # Clean the --hires flag so it's not parsed again later.
+        other = [arg for arg in other if arg != "--hires"]
 
-    # Filter arguments to prevent mismatch errors
+    # Filter arguments to prevent mismatch errors for the agent config.
     if method == "tdmpc2":
-        other_argv = [arg for arg in other_argv if not arg.startswith("--dreamerv3.")]
+        other = [arg for arg in other if not arg.startswith("--dreamerv3.")]
     elif method == "dreamerv3":
-        other_argv = [arg for arg in other_argv if not arg.startswith("--tdmpc2.")]
+        other = [arg for arg in other if not arg.startswith("--tdmpc2.")]
 
-    # Final parse of all remaining command-line flags
-    config = embodied.Flags(config).parse(other_argv)
+    # Final parse of all flags. This is necessary for the agent and run configs.
+    config = embodied.Flags(config).parse(other)
 
-    # Logdir setup
+    # --- Logdir and Logger Setup ---
     method_config = config[method]
     logdir = embodied.Path(method_config.logdir)
     step = embodied.Counter()
@@ -195,11 +213,8 @@ def main(argv=None):
         ],
     )
 
-    # Create and wrap the environment
-    import gym
+    # --- Environment Wrapping ---
     from embodied.envs import from_gym
-
-    env = gym.make(config.env.name, config=config.env)
     env = from_gym.FromGym(env)
     env = wrap_env(env, method_config)
     env = embodied.BatchEnv([env], parallel=False)

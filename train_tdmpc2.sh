@@ -13,15 +13,15 @@ TM_PORT=$((CARLA_PORT + 6001))
 LOG_FILE="log_tdmpc2_${CARLA_PORT}.log"
 CARLA_SERVER_COMMAND="$CARLA_ROOT/CarlaUE4.sh -RenderOffScreen -carla-port=$CARLA_PORT -benchmark -fps=10"
 TRAINING_SCRIPT="RL/train.py"
-# Use 'tdmpc2' method. 
-# Note: 'dreamerv3' params in train_dm3.sh were prefixed with --dreamerv3. 
+# Use 'tdmpc2' method.
+# Note: 'dreamerv3' params in train_dm3.sh were prefixed with --dreamerv3.
 # For tdmpc2, the prefix depends on how Config maps it. Based on my previous `train.py` edit:
 # config = embodied.Config({method: ...})
 # So params should be prefixed with --tdmpc2.
 COMMON_PARAMS="--method tdmpc2 --env.world.carla_port $CARLA_PORT --tdmpc2.jax.policy_devices $GPU_DEVICE --tdmpc2.jax.train_devices $GPU_DEVICE"
 ADDITIONAL_PARAMS="${@:3}"  # Capture all additional parameters passed to the script
 export CUDA_VISIBLE_DEVICES=$GPU_DEVICE
-TRAINING_COMMAND="PATH=/usr/bin:$PATH XLA_FLAGS=--xla_gpu_strict_conv_algorithm_picker=false python -u $TRAINING_SCRIPT $COMMON_PARAMS $ADDITIONAL_PARAMS"
+TRAINING_COMMAND="PATH=/usr/bin:$PATH XLA_FLAGS=--xla_gpu_strict_conv_algorithm_picker=false uv run $TRAINING_SCRIPT $COMMON_PARAMS $ADDITIONAL_PARAMS"
 
 # Clear log file before starting
 > $LOG_FILE

@@ -32,11 +32,10 @@ cd ..
 chmod +x ./train_dm3.sh
 
 # Ví dụ 1: Dùng cài đặt mặc định để đào tạo tác nhân
-./train_dm3.sh 2000 0 --task carla_four_lane --dreamerv3.logdir ./logdir/carla_four_lane
 # tùy chọn kích thước mô hình và task mong muốn
 ./train_dm3.sh 2000 0 --task carla_navigation --dreamerv3.logdir ./logdir/carla_navigation --model_size xsmall
 hoặc
-./train_dm3.sh 2000 0 --task carla_right_turn_simple --dreamerv3.logdir ./logdir/carla_right_turn_simple --model_size small
+./train_dm3.sh 2000 0 --task carla_right_turn_simple --dreamerv3.logdir ./logdir/carla_right_turn_simple --model_size xsmall
 
 
 ./train_dm3.sh 2000 0 --task carla_right_turn_simple \
@@ -62,5 +61,5 @@ Mở `http://localhost:6006/` trong trình duyệt để xem kết quả.
 Chạy các lệnh sau để đánh giá mô hình đã huấn luyện, trong đó đối số thứ ba là đường dẫn tới checkpoint:
 
 ```bash
-bash eval_dm3.sh 2000 0 ./logdir/carla_four_lane/checkpoint.ckpt --task carla_four_lane --dreamerv3.logdir ./logdir/carla_navigation
+./eval_dm3.sh 2000 0 ./logdir/carla_four_lane/checkpoint.ckpt --task carla_four_lane --dreamerv3.logdir ./logdir/carla_navigation
 ```

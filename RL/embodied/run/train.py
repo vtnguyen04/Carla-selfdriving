@@ -134,4 +134,6 @@ def train(agent, env, replay, logger, args):
             pbar.update(100)
             if should_save(step):
                 checkpoint.save()
+    log.info("Finished training loop. Saving final checkpoint.")
+    checkpoint.save_sync()
     logger.write()

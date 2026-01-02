@@ -4,7 +4,8 @@ import carla
 from gym import spaces
 
 from ..carla_manager import WorldManager
-from .handlers import BaseHandler, SimpleHandler
+from ..config import Config
+from .handlers import BaseHandler, SimpleHandler, CameraHandler
 from .utils import HANDLER_DICT, HandlerType
 
 SIMPLE_HANDLER_NAME = "simple"
@@ -19,9 +20,11 @@ class Observer:
     In addtion, :py:meth:`register_simple_handler` provides a flexible way to supplement the observation data with a callback.
     """
 
-    def __init__(self, world: WorldManager, obs_config: dict):
+    def __init__(self, world: WorldManager, obs_config: dict, display_config: dict):
         self._world = world
         self._obs_config = obs_config
+        self._display_config = display_config
+        self._display_handlers = []
         self._data_handlers = self._init_data_handlers()
 
     def register_simple_handler(
@@ -47,10 +50,14 @@ class Observer:
         """Destroy all the registered handlers."""
         for handler in self._data_handlers.values():
             handler.destroy()
+        for handler in self._display_handlers:
+            handler.destroy()
 
     def reset(self, ego: carla.Actor) -> None:
         """Reset all the registered handlers with the given ego vehicle."""
         for handler in self._data_handlers.values():
+            handler.reset(ego)
+        for handler in self._display_handlers:
             handler.reset(ego)
 
     def _init_data_handlers(self) -> Dict[str, BaseHandler]:
@@ -61,6 +68,20 @@ class Observer:
             handler_class = HANDLER_DICT.get(HandlerType(config.handler))
             handler = handler_class(self._world, config)
             handlers[name] = handler
+        
+        # If hires mode is enabled, create a separate camera handler for display
+        if self._display_config.get("hires", False) and 'camera' in self._obs_config.enabled:
+            # Create a new config for the hires camera by updating the base camera config.
+            # The Config object is immutable, so we must use the update() method.
+            base_cam_config = Config(self._obs_config.camera.copy())
+            updates = {
+                "key": "camera_display",
+                "shape": [720, 1280, 3],
+                "attributes.image_size_x": 1280,
+                "attributes.image_size_y": 720,
+            }
+            hires_cam_config = base_cam_config.update(updates)
+            self._display_handlers.append(CameraHandler(self._world, hires_cam_config))
         return handlers
 
     def get_observation_space(self) -> spaces.Space:
@@ -75,7 +96,14 @@ class Observer:
         obs = {}
         info = {}
         for handler in self._data_handlers.values():
-            obs_data, info_data = handler.get_observation(env_state)
+            obs_data, handler_info = handler.get_observation(env_state)
             obs.update(obs_data)
-            info.update(info_data)
+            info.update(handler_info)
+        
+        # Get observations from display handlers and add them to the info dict
+        for handler in self._display_handlers:
+            display_obs, display_info = handler.get_observation(env_state)
+            info.update(display_obs)
+            info.update(display_info)
+            
         return obs, info

@@ -55,6 +55,12 @@ class Checkpoint:
         else:
             self._save(filename, keys)
 
+    def save_sync(self, filename=None, keys=None):
+        assert self._filename or filename
+        filename = path.Path(filename or self._filename)
+        self._log and log.info(f"Writing checkpoint synchronously: {filename}")
+        self._save(filename, keys)
+
     def _save(self, filename, keys):
         keys = tuple(self._values.keys() if keys is None else keys)
         assert all([not k.startswith("_") for k in keys]), keys

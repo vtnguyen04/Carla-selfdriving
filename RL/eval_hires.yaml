@@ -8,7 +8,7 @@ env:
         image_size_y: 720
   display:
     enable: True
-    use_local_window: True
+    save_video: True
     render_keys: [camera_display, birdeye_wpt] # Use camera_display for high-res visualization
 dreamerv3:
   run:
