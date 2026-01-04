@@ -3,16 +3,16 @@ carla_wpt:
   reward:
     desired_speed: 3.5 # desired speed (m/s)
     scales:
-      waypoint: 10
-      speed: 2.0
+      waypoint: 2
+      speed: 0.5
       collision: 30.0
-      out_of_lane: 10.0
-      time: 2.0
-      standstill: 1.0
+      out_of_lane: 3.0
+      time: 0.0
+      standstill: 0.2
       destination_reached: 20.0
-      smoothness: 1
+      smoothness: 0.2
   terminal:
-    time_limit: 3300 # maximum timesteps per episode
+    time_limit: 1000 # maximum timesteps per episode
     out_lane_thres: 5.0 # threshold for out of lane
 
 carla_navigation:
@@ -24,7 +24,7 @@ carla_navigation:
     observation.enabled: [camera, collision, birdeye_wpt]
     num_vehicles: 5
     <<: *carla_wpt
-    success_dist: 1000.0
+    success_dist: 500.0
     display:
       enable: False
       use_local_window: False
@@ -33,7 +33,7 @@ carla_navigation:
     encoder:
       cnn_keys: "(camera|birdeye_wpt)"
     decoder:
-      cnn_keys: "(camera)"
+      cnn_keys: "(camera|birdeye_wpt)"
     run:
       log_keys_video: [camera, birdeye_wpt]
   tdmpc2:

@@ -17,7 +17,7 @@ uv sync
 Thiết lập CARLA và biến môi trường:
 
 ```bash
-export CARLA_ROOT=/workspace/Carla-selfdriving/carla_simulate
+export CARLA_ROOT=~/Carla-selfdriving/carla_simulate
 export PYTHONPATH="${CARLA_ROOT}/PythonAPI/carla":${PYTHONPATH}
 export CUDNN_PATH=$(dirname $(uv run python -c "import nvidia.cudnn;print(nvidia.cudnn.__file__)"))
 export CUSOLVER_PATH=$(dirname $(uv run python -c "import nvidia.cusolver;print(nvidia.cusolver.__file__)"))
