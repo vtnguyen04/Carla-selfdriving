@@ -143,7 +143,7 @@ defaults:
     }
   loss_scales:
     {
-      image: 1.0,
+      image: 1.5,
       vector: 1.0,
       reward: 1.0,
       cont: 1.0,
@@ -158,13 +158,13 @@ defaults:
   model_opt:
     {
       opt: adam,
-      lr: 4e-4,
+      lr: 3e-4,
       eps: 1e-8,
       clip: 1000.0,
       wd: 0.0,
       warmup: 0,
       decay_steps: 5e7,
-      min_lr: 1e-6,
+      min_lr: 4e-5,
       lateclip: 0.0,
     }
 
@@ -203,11 +203,11 @@ defaults:
   actor_opt:
     {
       opt: adam,
-      lr: 7e-5,
+      lr: 4e-5,
       eps: 1e-5,
       clip: 100.0,
       wd: 0.0,
-      warmup: 10000,
+      warmup: 0,
       decay_steps: 5e7,
       min_lr: 1e-6,
       lateclip: 0.0,
@@ -215,13 +215,13 @@ defaults:
   critic_opt:
     {
       opt: adam,
-      lr: 5e-5,
+      lr: 4e-5,
       eps: 1e-5,
       clip: 100.0,
       wd: 0.0,
-      warmup: 10000,
+      warmup: 0,
       decay_steps: 5e7,
-      min_lr: 1e-6,
+      min_lr: 1e-5,
       lateclip: 0.0,
     }
   actor_dist_disc: onehot
